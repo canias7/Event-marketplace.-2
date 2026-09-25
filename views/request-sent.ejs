@@ -1,0 +1,21 @@
+<%- include('partials/head') %>
+
+<h1>Request sent</h1>
+
+<div class="ok">
+  Your request has gone to <strong><%= sent.vendorName %></strong>.
+  Your reference is <strong>#<%= sent.id %></strong>.
+</div>
+
+<h2>What happens now</h2>
+<div class="card">
+  <ol style="margin:0; padding-left:20px">
+    <li>The vendor sees your request in their dashboard.</li>
+    <li>They send you a price.</li>
+    <li>If you are happy with it, you accept and pay through this site.</li>
+  </ol>
+</div>
+
+<p style="margin-top:24px"><a href="/">Browse more vendors</a></p>
+
+<%- include('partials/foot') %>

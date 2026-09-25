@@ -100,6 +100,31 @@ hair-makeup, transportation, entertainment.
 Node + Express + plain `pg` + EJS templates. Passwords hashed with bcryptjs.
 Chosen because it is one language end to end and easy to read.
 
+### EVERY page that waits on the database MUST be wrapped in handle()
+
+```js
+const { handle } = require('../handle');
+router.get('/thing', handle(async (req, res) => { ... }));
+```
+
+This is not a style preference. Express 4 does not catch a rejected promise
+from an async route, and Node's default on an uncaught rejection is to **kill
+the whole process**. An unwrapped page means one bad request takes the entire
+site offline and logs out every vendor. This actually happened: a customer
+entering 31 February made Postgres refuse the date and the app died.
+
+Async *middleware* needs it too - note `handle(auth.loadVendor)` in
+`routes/vendor.js`.
+
+`server.js` has an `unhandledRejection` listener as a last resort that logs
+loudly and keeps serving, and `npm test` asserts it never fires. Do not treat
+that backstop as permission to skip `handle()`.
+
+### Dates must be checked for existing, not just for format
+`2027-02-31` matches `YYYY-MM-DD` and JavaScript quietly rolls it to 3 March
+rather than complaining, but Postgres rejects it. `readEventDate` in
+`bookings.js` builds the date and checks it reads back the same.
+
 ---
 
 ## Git
@@ -139,6 +164,11 @@ db/seed.sql          The 12 categories
 db/reset.sql         Wipes everything (development only)
 db/setup.sh          Runs the SQL against Neon (npm run db:setup)
 db/check-schema.js   Validates the SQL without Neon (npm run db:check)
+src/handle.js        Wrapper that keeps a failing page from killing the app
+src/bookings.js      Booking request validation and creation
+src/money.js         Cents to dollars, and the platform fee split
+scripts/demo-data.js 24 fake vendors and a full CRM (npm run demo-data)
+test/e2e.sh          The 79 checks (npm test)
 ```
 
 ---
@@ -153,14 +183,21 @@ db/check-schema.js   Validates the SQL without Neon (npm run db:check)
 - [x] Password hashing, identical errors for wrong-email and wrong-password,
       lockout after 8 failed tries
 - [x] Stripe live-key guard, with tests proving it refuses to start
-- [x] 44 end-to-end tests (`npm test`)
-- [ ] Customer browse + booking request
+- [x] Customer browse: all vendors, by category, single vendor profile
+- [x] Booking requests, with validation and a receipt page
+- [x] Demo data (`npm run demo-data`) - 24 vendors, all 12 categories
+- [x] 79 end-to-end tests (`npm test`)
 - [ ] Vendor CRM (leads pipeline and notes)
 - [ ] Payments
-- [ ] Demo data
 - [ ] Deploy to app.eventvendora.com
 
 Nothing left needs a live Neon connection to build.
+
+### Things already handled, so do not "fix" them again
+- Booking receipts are keyed off the session, not a booking id in the URL.
+  Booking ids run 1, 2, 3..., so `/booking/7` would let anyone read a
+  stranger's request.
+- Public listings never select a vendor's email.
 
 ### Known gap to close later
 No CSRF tokens on forms. Right now the session cookie is `sameSite: 'lax'`,

@@ -71,6 +71,15 @@ app.use((err, req, res, next) => {
   res.status(500).send('<h1>Something went wrong</h1><p><a href="/">Go home</a></p>');
 });
 
+/* LAST RESORT. Every page should be wrapped in handle() so its failures
+   land on the error page above. If one ever slips through, Node's default
+   is to shut the whole app down - which would log out every vendor over a
+   single bad request. We log it loudly and keep serving instead. */
+process.on('unhandledRejection', (reason) => {
+  console.error('UNHANDLED PROBLEM - a page was not wrapped in handle().');
+  console.error('The app is still running, but this needs fixing:', reason);
+});
+
 async function start() {
   console.log('');
   console.log('PAYMENTS: ' + (config.paymentMode === 'pretend'

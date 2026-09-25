@@ -1,0 +1,64 @@
+<%- include('partials/head') %>
+
+<h1><%= vendor.business_name %></h1>
+<p class="sub">
+  <a href="/browse/<%= vendor.category_slug %>"><%= vendor.category_name %></a><%= vendor.city ? ' - ' + vendor.city : '' %>
+  <% if (vendor.price_from_cents) { %> - from <%= money(vendor.price_from_cents) %><% } %>
+</p>
+
+<% if (vendor.description) { %>
+  <div class="card"><%= vendor.description %></div>
+<% } %>
+
+<h2>Request a booking</h2>
+<p class="hint">Sends your details to <%= vendor.business_name %>. They reply with a price. You only pay once you accept.</p>
+
+<% if (error) { %><div class="error"><%= error %></div><% } %>
+
+<div class="card">
+<form method="post" action="/vendors/<%= vendor.id %>/request">
+
+  <div class="row2">
+    <div>
+      <label>Your name</label>
+      <input name="name" value="<%= form.name || '' %>" required maxlength="120">
+    </div>
+    <div>
+      <label>Your email</label>
+      <input type="email" name="email" value="<%= form.email || '' %>" required>
+    </div>
+  </div>
+
+  <div class="row2">
+    <div>
+      <label>Your phone (optional)</label>
+      <input name="phone" value="<%= form.phone || '' %>" maxlength="40">
+    </div>
+    <div>
+      <label>Event date (optional)</label>
+      <input type="date" name="eventDate" value="<%= form.eventDate || '' %>">
+      <p class="hint">Leave blank if you are still deciding.</p>
+    </div>
+  </div>
+
+  <div class="row2">
+    <div>
+      <label>Kind of event</label>
+      <input name="eventType" value="<%= form.eventType || '' %>" placeholder="Wedding, birthday, corporate..." maxlength="120">
+    </div>
+    <div>
+      <label>Guests (optional)</label>
+      <input name="guestCount" value="<%= form.guestCount || '' %>" inputmode="numeric" placeholder="80">
+    </div>
+  </div>
+
+  <label>What do you need?</label>
+  <textarea name="details" required maxlength="2000" placeholder="Six hours of coverage, outdoor ceremony, two photographers..."><%= form.details || '' %></textarea>
+
+  <button type="submit">Send request</button>
+</form>
+</div>
+
+<p style="margin-top:20px"><a href="/browse/<%= vendor.category_slug %>">Back to <%= vendor.category_name %></a></p>
+
+<%- include('partials/foot') %>

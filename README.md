@@ -20,13 +20,35 @@ That works because when no Neon connection string is set, the app runs its own
 Postgres inside a folder called `.localdb`. Real Postgres, real SQL, no account.
 Your data stays there between restarts.
 
-To get an admin account:
+To fill it with something to look at:
+
+```bash
+npm run demo-data
+```
+
+That adds 24 vendors across all 12 categories, plus customers, bookings at
+every stage, notes and payments. It prints a vendor login you can use - every
+demo vendor's password is `demo1234`.
+
+To get an admin account (stop the app first - see the note below):
 
 ```bash
 npm run create-admin -- you@example.com yourpassword
 ```
 
 Then log in at `/admin/login`.
+
+## What you can click through today
+
+**As a customer** - no login needed:
+home page -> pick a category -> pick a vendor -> fill in the request form ->
+see your reference number.
+
+**As a vendor** - `/vendor/signup` or log in as a demo vendor:
+see your listing and your account.
+
+**As the admin** - `/admin/login`:
+see every vendor, and counts of customers, bookings and payments.
 
 ---
 
@@ -143,10 +165,11 @@ npm test          # clicks through every page and checks what comes back
 npm run db:check  # checks the SQL files are valid, without needing Neon
 ```
 
-`npm test` starts the app on a spare port with a throwaway database, runs 44
+`npm test` starts the app on a spare port with a throwaway database, runs 79
 checks, then tidies up. It covers signups, logins, wrong passwords, locked-out
-pages, password-guessing protection, admin access, and that data survives a
-restart.
+pages, password-guessing protection, admin access, browsing, booking requests
+and their validation, that data survives a restart, and that a failing page
+cannot take the whole site down.
 
 ---
 
@@ -165,16 +188,19 @@ src/
   config.js          Reads .env. Refuses to start on a live Stripe key.
   db.js              Talks to Neon, or to the local folder
   auth.js            Passwords, logins, who-is-allowed-where
+  bookings.js        Checking and saving a booking request
   money.js           Cents to dollars, and the fee split
+  handle.js          Keeps a failing page from killing the whole app
   routes/
-    public.js        Home and browse
+    public.js        Home, browse, vendor profiles, booking requests
     vendor.js        Vendor signup, login, dashboard
     admin.js         Admin login, overview
 views/               The HTML pages
 scripts/
   create-admin.js    Creates your admin account
+  demo-data.js       Fills the app with fake vendors and bookings
 test/
-  e2e.sh             The 44 checks
+  e2e.sh             The 79 checks
 ```
 
 ---
@@ -187,9 +213,10 @@ test/
 - [x] Vendor signup and login
 - [x] Admin login
 - [x] Password protection: hashing, vague errors, lockout after 8 tries
-- [x] 44 end-to-end tests
-- [ ] Customer browse + booking request
+- [x] Customer browse: all vendors, by category, vendor profiles
+- [x] Booking requests with validation
+- [x] Demo data
+- [x] 79 end-to-end tests
 - [ ] Vendor CRM (leads pipeline and notes)
 - [ ] Payments
-- [ ] Demo data
 - [ ] Deploy to app.eventvendora.com

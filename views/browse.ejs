@@ -1,0 +1,33 @@
+<%- include('partials/head') %>
+
+<h1><%= heading %></h1>
+<p class="sub"><%= blurb %></p>
+
+<% if (!vendors.length) { %>
+  <div class="card">
+    <p style="margin:0">No vendors here yet.</p>
+    <p class="hint" style="margin-bottom:0">If this is your line of work, <a href="/vendor/signup">list your business</a>.</p>
+  </div>
+<% } else { %>
+  <table>
+    <tr>
+      <th>Business</th>
+      <% if (showCategory) { %><th>Category</th><% } %>
+      <th>City</th>
+      <th>From</th>
+    </tr>
+    <% for (const v of vendors) { %>
+      <tr>
+        <td><a href="/vendors/<%= v.id %>"><%= v.business_name %></a></td>
+        <% if (showCategory) { %><td><%= v.category_name %></td><% } %>
+        <td><%= v.city || '-' %></td>
+        <td><%= v.price_from_cents ? money(v.price_from_cents) : '-' %></td>
+      </tr>
+    <% } %>
+  </table>
+  <p class="hint"><%= vendors.length %> vendor<%= vendors.length === 1 ? '' : 's' %>.</p>
+<% } %>
+
+<p><a href="/">Back to all categories</a></p>
+
+<%- include('partials/foot') %>

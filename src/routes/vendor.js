@@ -5,6 +5,7 @@
 const express = require('express');
 const db = require('../db');
 const auth = require('../auth');
+const { handle } = require('../handle');
 
 const router = express.Router();
 
@@ -12,15 +13,15 @@ const listCategories = () => db.query('select id, name from categories order by 
 
 /* ---------------- SIGN UP ---------------- */
 
-router.get('/signup', async (req, res) => {
+router.get('/signup', handle(async (req, res) => {
   res.render('vendor/signup', {
     title: 'Create a vendor account',
     categories: await listCategories(),
     form: {},
   });
-});
+}));
 
-router.post('/signup', async (req, res) => {
+router.post('/signup', handle(async (req, res) => {
   const result = await auth.signUpVendor(req.body);
 
   if (result.error) {
@@ -41,7 +42,7 @@ router.post('/signup', async (req, res) => {
     req.session.vendorId = result.vendor.id;
     res.redirect('/vendor');
   });
-});
+}));
 
 /* ---------------- LOG IN ---------------- */
 
@@ -49,7 +50,7 @@ router.get('/login', (req, res) => {
   res.render('vendor/login', { title: 'Vendor login', form: {} });
 });
 
-router.post('/login', async (req, res) => {
+router.post('/login', handle(async (req, res) => {
   const { email, password } = req.body;
   const result = await auth.logInVendor(email, password);
 
@@ -66,7 +67,7 @@ router.post('/login', async (req, res) => {
     req.session.vendorId = result.user.id;
     res.redirect('/vendor');
   });
-});
+}));
 
 router.post('/logout', (req, res) => {
   req.session.destroy(() => res.redirect('/'));
@@ -74,7 +75,7 @@ router.post('/logout', (req, res) => {
 
 /* ---------------- DASHBOARD (login required) ---------------- */
 
-router.get('/', auth.requireVendor, auth.loadVendor, (req, res) => {
+router.get('/', auth.requireVendor, handle(auth.loadVendor), (req, res) => {
   res.render('vendor/dashboard', { title: 'My dashboard', vendor: req.vendor });
 });
 

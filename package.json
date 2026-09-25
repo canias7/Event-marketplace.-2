@@ -9,7 +9,8 @@
     "db:setup": "bash db/setup.sh",
     "db:check": "node db/check-schema.js",
     "create-admin": "node scripts/create-admin.js",
-    "test": "bash test/e2e.sh"
+    "test": "bash test/e2e.sh",
+    "demo-data": "node scripts/demo-data.js"
   },
   "dependencies": {
     "bcryptjs": "^2.4.3",

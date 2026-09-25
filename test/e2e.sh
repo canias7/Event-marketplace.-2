@@ -160,13 +160,71 @@ check "wrong admin password refused" "$(code -X POST $BASE/admin/login -d 'email
 
 echo
 echo "8. DATA SURVIVED THE RESTART"
-check "admin sees both vendors"    "$(body -b $WORK/a.jar $BASE/admin | grep -A1 '<th>Vendors</th>' | grep -c '<td>2</td>')" "1"
+check "admin sees both vendors"    "$(body -b $WORK/a.jar $BASE/admin | grep -c '<th>Vendors</th><td>2</td>')" "1"
 check "the first vendor is listed" "$(body -b $WORK/a.jar $BASE/admin | grep -c 'Golden Hour Photography')" "1"
 check "that vendor can still log in" "$(login $WORK/v5.jar 'sam@goldenhour.com' 'supersecret123')" "302"
 
 echo
-echo "9. NO CRASHES WERE LOGGED"
-check "server logged no errors" "$(grep -ci 'ERROR on' $WORK/server.log || true)" "0"
+echo "9. CUSTOMERS CAN BROWSE"
+check "browse-everything page loads"      "$(code $BASE/browse)" "200"
+check "  ...and lists the vendor"         "$(body $BASE/browse | grep -c 'Golden Hour Photography')" "1"
+check "a category page loads"             "$(code $BASE/browse/photography)" "200"
+check "  ...and lists the vendor"         "$(body $BASE/browse/photography | grep -c 'Golden Hour Photography')" "1"
+check "an empty category says so"         "$(body $BASE/browse/catering | grep -c 'No vendors here yet')" "1"
+check "a made-up category is 404"         "$(code $BASE/browse/not-a-real-category)" "404"
+check "a vendor profile loads"            "$(code $BASE/vendors/1)" "200"
+check "  ...and offers the booking form"  "$(body $BASE/vendors/1 | grep -c 'Request a booking')" "1"
+check "a missing vendor is 404"           "$(code $BASE/vendors/99999)" "404"
+check "a nonsense vendor id is 404"       "$(code $BASE/vendors/abc)" "404"
+check "vendor emails are NOT public"      "$(body $BASE/vendors/1 | grep -c 'goldenhour.com')" "0"
+
+echo
+echo "10. SENDING A BOOKING REQUEST"
+check "a good request is accepted" "$(code -c $WORK/cust.jar -X POST $BASE/vendors/1/request \
+  -d 'name=Avery Chen' -d 'email=Avery@Example.com' -d 'phone=512-555-0199' \
+  -d 'eventDate=2099-05-15' -d 'eventType=Wedding' -d 'guestCount=95' \
+  -d 'details=Full day coverage, two shooters.')" "302"
+check "  ...and confirms it"            "$(body -b $WORK/cust.jar $BASE/request-sent | grep -c '<h1>Request sent</h1>')" "1"
+check "  ...naming the right vendor"    "$(body -b $WORK/cust.jar $BASE/request-sent | grep -c 'Golden Hour Photography')" "1"
+check "the receipt page needs a session" "$(whereto $BASE/request-sent)" "/"
+check "it reached the vendor CRM"       "$(body -b $WORK/a.jar $BASE/admin | grep -c '<th>Bookings</th><td>1</td>')" "1"
+check "the customer was recorded"       "$(body -b $WORK/a.jar $BASE/admin | grep -c '<th>Customers</th><td>1</td>')" "1"
+
+request() { curl -s -X POST $BASE/vendors/1/request -d "name=$1" -d "email=$2" -d "eventDate=$3" -d "details=$4" -d "guestCount=${5:-}" | grep -o 'class="error">[^<]*' | sed 's/class="error">//'; }
+check "no name refused"        "$(request ''      'a@b.com' '2099-05-15' 'stuff')" "Please enter your name."
+check "bad email refused"      "$(request 'Avery' 'nope'    '2099-05-15' 'stuff')" "That does not look like an email address."
+check "past date refused"      "$(request 'Avery' 'a@b.com' '2020-01-01' 'stuff')" "That date has already passed."
+check "31 February refused"    "$(request 'Avery' 'a@b.com' '2099-02-31' 'stuff')" "That date does not exist. Please check the day and month."
+check "no details refused"     "$(request 'Avery' 'a@b.com' '2099-05-15' '')"      "Please tell the vendor what you need."
+check "worded guest count refused" "$(request 'Avery' 'a@b.com' '2099-05-15' 'stuff' 'about eighty')" "Guest count must be a whole number."
+check "a blank date is allowed" "$(request 'Avery' 'a@b.com' ''          'stuff')" ""
+check "requests to a missing vendor 404" "$(code -X POST $BASE/vendors/99999/request -d 'name=A' -d 'email=a@b.com' -d 'details=x')" "404"
+
+echo
+echo "11. A BAD REQUEST CANNOT TAKE THE SITE DOWN"
+# A null byte is something Postgres genuinely refuses to store. Before
+# handle() existed this killed the whole app, logging out every vendor.
+check "database error gives an error page" "$(code -X POST $BASE/vendors/1/request -d 'name=A' -d 'email=a@b.com' -d 'details=x' -d 'eventType=bad%00type')" "500"
+check "  ...and the app is still serving"  "$(code $BASE/)" "200"
+check "  ...and logins still work"         "$(login $WORK/v6.jar 'sam@goldenhour.com' 'supersecret123')" "302"
+
+echo
+echo "12. DEMO DATA"
+echo "   (stopping the app to load it, then starting again)"
+stop_server
+run_app node scripts/demo-data.js --force > "$WORK/demo.log" 2>&1
+check "demo data loaded"        "$(grep -c '24 vendors' $WORK/demo.log)" "1"
+check "it printed a login"      "$(grep -c 'password: demo1234' $WORK/demo.log)" "1"
+start_server
+check "browse now shows 26 vendors"     "$(body $BASE/browse | grep -oE '[0-9]+ vendors')" "26 vendors"
+check "every category has a vendor"     "$(body $BASE/ | grep -c '<td>0</td>')" "0"
+check "a demo vendor can log in"        "$(login $WORK/d.jar 'golden.hour.photography@example.com' 'demo1234')" "302"
+check "  ...and sees their dashboard"   "$(code -b $WORK/d.jar $BASE/vendor)" "200"
+
+echo
+echo "13. THE APP NEVER CRASHED"
+check "no unwrapped page failures" "$(grep -c 'UNHANDLED PROBLEM' $WORK/server.log || true)" "0"
+check "the app is still answering"  "$(code $BASE/)" "200"
 
 echo
 echo "================================"

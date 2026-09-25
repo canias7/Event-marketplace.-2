@@ -5,16 +5,17 @@
 const express = require('express');
 const db = require('../db');
 const auth = require('../auth');
+const { handle } = require('../handle');
 
 const router = express.Router();
 
-router.get('/login', async (req, res) => {
+router.get('/login', handle(async (req, res) => {
   // If no admin exists yet, tell them how to make one.
   const any = await db.one('select id from admins limit 1');
   res.render('admin/login', { title: 'Admin login', form: {}, noAdminYet: !any });
-});
+}));
 
-router.post('/login', async (req, res) => {
+router.post('/login', handle(async (req, res) => {
   const { email, password } = req.body;
   const result = await auth.logInAdmin(email, password);
 
@@ -33,13 +34,13 @@ router.post('/login', async (req, res) => {
     req.session.adminId = result.user.id;
     res.redirect('/admin');
   });
-});
+}));
 
 router.post('/logout', (req, res) => {
   req.session.destroy(() => res.redirect('/'));
 });
 
-router.get('/', auth.requireAdmin, async (req, res) => {
+router.get('/', auth.requireAdmin, handle(async (req, res) => {
   const countOf = async (table) =>
     (await db.one(`select count(*)::int as n from ${table}`)).n;
 
@@ -59,6 +60,6 @@ router.get('/', auth.requireAdmin, async (req, res) => {
     },
     vendors: vendors.rows,
   });
-});
+}));
 
 module.exports = router;

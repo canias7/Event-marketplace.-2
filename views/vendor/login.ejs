@@ -1,0 +1,23 @@
+<%- include('../partials/head') %>
+
+<h1>Vendor login</h1>
+<p class="sub">Get to your bookings and your CRM.</p>
+
+<% if (error) { %><div class="error"><%= error %></div><% } %>
+<% if (notice) { %><div class="ok"><%= notice %></div><% } %>
+
+<div class="card narrow">
+<form method="post" action="/vendor/login">
+  <label>Email</label>
+  <input type="email" name="email" value="<%= form.email || '' %>" required autofocus>
+
+  <label>Password</label>
+  <input type="password" name="password" required>
+
+  <button type="submit">Log in</button>
+</form>
+</div>
+
+<p style="margin-top:20px">No account yet? <a href="/vendor/signup">Create one</a>.</p>
+
+<%- include('../partials/foot') %>

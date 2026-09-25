@@ -8,3 +8,6 @@ node_modules/
 # Junk
 *.log
 .DS_Store
+
+# Local database folder (only used when DATABASE_URL is empty)
+.localdb/

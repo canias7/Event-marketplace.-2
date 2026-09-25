@@ -7,16 +7,39 @@ Will live at **app.eventvendora.com**.
 
 ---
 
+## Run it right now (no signup, no keys, nothing to configure)
+
+```bash
+npm install
+npm start
+```
+
+Open **http://localhost:3000**.
+
+That works because when no Neon connection string is set, the app runs its own
+Postgres inside a folder called `.localdb`. Real Postgres, real SQL, no account.
+Your data stays there between restarts.
+
+To get an admin account:
+
+```bash
+npm run create-admin -- you@example.com yourpassword
+```
+
+Then log in at `/admin/login`.
+
+---
+
 ## The four pieces (plain English)
 
 Think of a small office:
 
 | Piece | What it is |
 |---|---|
-| **Database** | The filing cabinet. Holds vendors, customers, bookings, payments, notes. Lives in Neon (hosted Postgres). |
+| **Database** | The filing cabinet. Holds vendors, customers, bookings, payments, notes. |
 | **Backend** | The clerk. Opens the cabinet, checks passwords, talks to Stripe. |
 | **API** | The counter the clerk stands behind. Just the list of requests it accepts. Part of the backend, not a separate product. |
-| **Frontend** | The forms you fill in. Plain HTML pages. Deliberately not pretty. |
+| **Frontend** | The forms you fill in. Plain HTML. Deliberately not pretty. |
 
 ## The three kinds of user
 
@@ -50,7 +73,7 @@ whole app - it's commented in plain English.
 **The CRM is not a separate system.** A vendor's CRM is just "all the bookings
 pointing at me, grouped by status". One table does both jobs.
 
-A booking moves through these statuses:
+A booking moves through these statuses, and the database refuses any other:
 
 ```
 new -> quoted -> booked -> paid -> completed
@@ -58,38 +81,40 @@ new -> quoted -> booked -> paid -> completed
 ```
 
 **Money is always stored in whole cents**, never decimals. `$2,500.00` is
-stored as `250000`. Decimals cause rounding bugs with money.
+stored as `250000`. Decimals quietly lose pennies.
+
+### Two places the database can live
+
+| `DATABASE_URL` | Where the data goes |
+|---|---|
+| Empty | The `.localdb` folder on this machine. No signup. |
+| Set | Your Neon database. |
+
+It is the same Postgres either way, so anything that works locally works on
+Neon. Switching is one line in `.env`.
+
+**One catch with the local option:** it is built into the app rather than being
+a separate server, so only one program can open it at a time. If the app is
+running, commands like `npm run create-admin` will refuse to run and tell you
+to stop the app first. This does not happen on Neon, which is a real server and
+accepts as many connections as you like.
 
 ---
 
-## Setup
-
-### 1. Get a Neon database
+## Moving to Neon
 
 1. Sign up at [neon.tech](https://neon.tech) (free tier is fine).
 2. Create a project.
-3. Copy the connection string it gives you. It looks like:
+3. Copy the connection string. It looks like:
    ```
    postgresql://user:password@ep-something-123.us-east-2.aws.neon.tech/neondb?sslmode=require
    ```
-   That one string contains the address, username, password and database name.
+   That one string holds the address, username, password and database name.
+4. `cp .env.example .env`, then paste it in as `DATABASE_URL`.
+5. `npm run db:setup`
 
-### 2. Configure the app
-
-```bash
-cp .env.example .env
-```
-
-Open `.env` and paste your Neon string in as `DATABASE_URL`.
-
-`.env` is ignored by git, so your password can never get pushed to GitHub.
-
-### 3. Create the tables
-
-```bash
-npm install
-npm run db:setup
-```
+`.env` is gitignored, so the password can never be pushed to GitHub.
+`db/setup.sh` prints only the hostname, never the password.
 
 To wipe and start over: `npm run db:setup -- --reset`
 
@@ -97,54 +122,74 @@ To wipe and start over: `npm run db:setup -- --reset`
 
 ## Payments
 
-Payments have three modes, decided automatically at startup by looking at your
-Stripe key:
+Three modes, decided at startup by looking at your Stripe key:
 
 | What the app finds | What happens |
 |---|---|
 | No Stripe key | **Pretend mode.** Clicking Pay records the payment and marks the booking paid. Nothing leaves the app. |
-| Key starts with `sk_test_` | Real Stripe **test** mode. Fake card numbers like `4242 4242 4242 4242`. |
+| Key starts with `sk_test_` | Real Stripe **test** mode. Fake cards like `4242 4242 4242 4242`. |
 | Anything else, including `sk_live_` | **The app refuses to start.** Prints an error and serves nothing. |
 
-That last row is deliberate. A live key cannot be used by mistake, because the
-app simply won't run with one. No real money can ever move.
+That last row is deliberate and tested. The Stripe account is shared with a
+real business, so a live key must be incapable of moving real money here. It is
+not a warning you can click past - the app simply will not run.
 
 ---
 
 ## Checking things work
 
 ```bash
-npm run db:check
+npm test          # clicks through every page and checks what comes back
+npm run db:check  # checks the SQL files are valid, without needing Neon
 ```
 
-This runs the schema against an in-memory copy of Postgres - no Neon needed.
-It creates the tables, inserts one of everything, and confirms the database
-rejects bad data (invalid statuses, duplicate emails, made-up categories).
+`npm test` starts the app on a spare port with a throwaway database, runs 44
+checks, then tidies up. It covers signups, logins, wrong passwords, locked-out
+pages, password-guessing protection, admin access, and that data survives a
+restart.
 
 ---
 
 ## Project layout
 
 ```
+CLAUDE.md            Decisions and context for anyone picking this up
 db/
-  schema.sql        The 7 tables, commented in plain English
-  seed.sql          The 12 categories
-  reset.sql         Wipes everything (development only)
-  setup.sh          Runs the above against Neon
-  check-schema.js   Proves the SQL is valid without needing Neon
-.env.example        Template for your settings. Copy to .env
+  schema.sql         The 7 tables, commented in plain English
+  seed.sql           The 12 categories
+  reset.sql          Wipes everything (development only)
+  setup.sh           Runs the SQL against Neon
+  check-schema.js    Validates the SQL without needing Neon
+src/
+  server.js          Starts the web server
+  config.js          Reads .env. Refuses to start on a live Stripe key.
+  db.js              Talks to Neon, or to the local folder
+  auth.js            Passwords, logins, who-is-allowed-where
+  money.js           Cents to dollars, and the fee split
+  routes/
+    public.js        Home and browse
+    vendor.js        Vendor signup, login, dashboard
+    admin.js         Admin login, overview
+views/               The HTML pages
+scripts/
+  create-admin.js    Creates your admin account
+test/
+  e2e.sh             The 44 checks
 ```
 
 ---
 
 ## Status
 
-- [x] Database structure (7 tables)
+- [x] Database - 7 tables, validated against real Postgres
 - [x] 12 vendor categories
-- [x] Validated against real Postgres
-- [ ] Vendor / admin logins
+- [x] Runs with zero setup (local Postgres fallback)
+- [x] Vendor signup and login
+- [x] Admin login
+- [x] Password protection: hashing, vague errors, lockout after 8 tries
+- [x] 44 end-to-end tests
 - [ ] Customer browse + booking request
-- [ ] Vendor dashboard + CRM
+- [ ] Vendor CRM (leads pipeline and notes)
 - [ ] Payments
 - [ ] Demo data
 - [ ] Deploy to app.eventvendora.com

@@ -1,0 +1,53 @@
+<%- include('../partials/head') %>
+
+<h1>Create a vendor account</h1>
+<p class="sub">Free to list. You only pay a fee when you get booked.</p>
+
+<% if (error) { %><div class="error"><%= error %></div><% } %>
+
+<div class="card">
+<form method="post" action="/vendor/signup">
+
+  <label>Business name</label>
+  <input name="businessName" value="<%= form.businessName || '' %>" required maxlength="120">
+
+  <label>Category</label>
+  <select name="categoryId" required>
+    <option value="">Choose one...</option>
+    <% for (const c of categories) { %>
+      <option value="<%= c.id %>" <%= String(form.categoryId) === String(c.id) ? 'selected' : '' %>><%= c.name %></option>
+    <% } %>
+  </select>
+
+  <div class="row2">
+    <div>
+      <label>City</label>
+      <input name="city" value="<%= form.city || '' %>" maxlength="120">
+    </div>
+    <div>
+      <label>Phone</label>
+      <input name="phone" value="<%= form.phone || '' %>" maxlength="40">
+    </div>
+  </div>
+
+  <label>Starting price (US dollars)</label>
+  <input name="priceFrom" value="<%= form.priceFrom || '' %>" inputmode="decimal" placeholder="1500">
+  <p class="hint">Shown to customers as "from $1,500". Leave blank if you'd rather not say.</p>
+
+  <label>About your business</label>
+  <textarea name="description" maxlength="2000"><%= form.description || '' %></textarea>
+
+  <label>Email</label>
+  <input type="email" name="email" value="<%= form.email || '' %>" required>
+
+  <label>Password</label>
+  <input type="password" name="password" required minlength="8">
+  <p class="hint">At least 8 characters.</p>
+
+  <button type="submit">Create my account</button>
+</form>
+</div>
+
+<p style="margin-top:20px">Already have an account? <a href="/vendor/login">Log in</a>.</p>
+
+<%- include('../partials/foot') %>

@@ -1,0 +1,27 @@
+<%- include('partials/head') %>
+
+<h1>Event Vendora</h1>
+<p class="sub">Find and book vendors for your event.</p>
+
+<div class="mode">
+  Payments: <strong><%= paymentMode === 'pretend' ? 'pretend mode' : 'Stripe test mode' %></strong>
+  &nbsp;|&nbsp; Database: <strong><%= dbBackend === 'neon' ? 'Neon' : 'local folder' %></strong>
+</div>
+
+<h2>Browse by category</h2>
+<table>
+  <tr><th>Category</th><th>Vendors</th></tr>
+  <% for (const c of categories) { %>
+    <tr>
+      <td><a href="/browse/<%= c.slug %>"><%= c.name %></a></td>
+      <td><%= c.vendor_count %></td>
+    </tr>
+  <% } %>
+</table>
+
+<h2>Are you a vendor?</h2>
+<p><a href="/vendor/signup">Create a vendor account</a> &nbsp;or&nbsp; <a href="/vendor/login">log in</a>.</p>
+
+<p class="hint" style="margin-top:40px"><a href="/admin/login">Admin login</a></p>
+
+<%- include('partials/foot') %>

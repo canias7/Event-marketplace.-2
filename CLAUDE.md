@@ -46,8 +46,16 @@ Either the user adds it to the environment's settings as an environment
 variable, or they put it in a local `.env` file. **Never ask them to paste a
 connection string or any secret into the chat** - chat keeps a transcript.
 
-`npm run db:check` validates the schema against an in-process Postgres, so
-development does not need a live Neon connection.
+**The app runs with no Neon at all.** When `DATABASE_URL` is empty it starts
+its own Postgres in a `.localdb` folder. Same Postgres, same SQL, so anything
+that works locally works on Neon.
+
+That local database is embedded in the process, so **only one program can open
+it at a time**. `src/db.js` enforces this with a `.in-use-by-pid` note file
+kept NEXT TO the folder (never inside it - Postgres refuses to open a data
+folder containing unexpected files). Without this, `npm run create-admin` while
+the app was running would report success and silently lose the write. Neon has
+no such limit.
 
 ### Payments: Stripe, TEST MODE ONLY - this one matters
 The user is reusing the **Stripe account of their real, live business**. This
@@ -110,6 +118,13 @@ Do not open a pull request unless asked.
 - Never ask the user to paste a secret into the chat.
 - Verify work by running it. Do not report something as done on the strength
   of having written it.
+- `npm test` must pass before committing. It starts the app on port 3999 with
+  a throwaway database and refuses to run if something is already listening
+  there, because stale servers answering with their own data make every result
+  a lie.
+- When backgrounding the server in a shell script, put the environment
+  variables directly in front of `node`, not behind a shell function - `$!`
+  would otherwise be the wrapper's id and `kill` would leave the app running.
 
 ---
 
@@ -132,12 +147,22 @@ db/check-schema.js   Validates the SQL without Neon (npm run db:check)
 
 - [x] Database structure - 7 tables, validated against real Postgres
 - [x] 12 vendor categories
-- [ ] Vendor and admin logins
+- [x] Zero-setup local Postgres fallback
+- [x] Vendor signup and login
+- [x] Admin login (`npm run create-admin`)
+- [x] Password hashing, identical errors for wrong-email and wrong-password,
+      lockout after 8 failed tries
+- [x] Stripe live-key guard, with tests proving it refuses to start
+- [x] 44 end-to-end tests (`npm test`)
 - [ ] Customer browse + booking request
-- [ ] Vendor dashboard + CRM
-- [ ] Payments (pretend mode + the test-key guard)
+- [ ] Vendor CRM (leads pipeline and notes)
+- [ ] Payments
 - [ ] Demo data
 - [ ] Deploy to app.eventvendora.com
 
-Nothing after this point needs a live Neon connection to build. Keep going
-against `npm run db:check` and it will behave identically on Neon.
+Nothing left needs a live Neon connection to build.
+
+### Known gap to close later
+No CSRF tokens on forms. Right now the session cookie is `sameSite: 'lax'`,
+which stops another website posting our forms, so this is covered for the
+common case but should get real tokens before real money flows.

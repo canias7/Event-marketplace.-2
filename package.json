@@ -7,10 +7,13 @@
   "scripts": {
     "start": "node src/server.js",
     "db:setup": "bash db/setup.sh",
-    "db:check": "node db/check-schema.js"
+    "db:check": "node db/check-schema.js",
+    "create-admin": "node scripts/create-admin.js",
+    "test": "bash test/e2e.sh"
   },
   "dependencies": {
     "bcryptjs": "^2.4.3",
+    "dotenv": "^18.0.4",
     "ejs": "^3.1.10",
     "express": "^4.21.2",
     "express-session": "^1.18.1",

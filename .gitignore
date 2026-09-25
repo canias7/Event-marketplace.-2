@@ -1,0 +1,10 @@
+# Secrets - never commit these
+.env
+.env.local
+
+# Installed packages
+node_modules/
+
+# Junk
+*.log
+.DS_Store

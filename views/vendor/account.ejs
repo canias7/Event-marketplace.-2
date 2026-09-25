@@ -1,23 +1,22 @@
 <%- include('../partials/head') %>
 
-<h1><%= vendor.business_name %></h1>
-<p class="sub"><%= vendor.category_name %><%= vendor.city ? ' - ' + vendor.city : '' %></p>
+<h1>My account</h1>
+<p class="sub"><%= vendor.business_name %></p>
 
 <div class="card">
-  <h2 style="margin-top:0">Your account</h2>
   <table>
+    <tr><th>Business</th><td><%= vendor.business_name %></td></tr>
     <tr><th>Email</th><td><%= vendor.email %></td></tr>
     <tr><th>Category</th><td><%= vendor.category_name %></td></tr>
+    <tr><th>City</th><td><%= vendor.city || '-' %></td></tr>
     <tr><th>Phone</th><td><%= vendor.phone || '-' %></td></tr>
     <tr><th>Starting price</th><td><%= vendor.price_from_cents ? money(vendor.price_from_cents) : '-' %></td></tr>
     <tr><th>Listing</th><td><%= vendor.is_active ? 'Visible to customers' : 'Hidden' %></td></tr>
   </table>
 </div>
 
-<h2>Your CRM</h2>
-<p class="hint">Every booking request that comes to you, and where it stands.</p>
-<div class="card">
-  <p style="margin:0;color:#666">Coming next: your leads pipeline and notes.</p>
-</div>
+<p style="margin-top:20px">
+  <a href="/vendors/<%= vendor.id %>">See how customers see you</a>
+</p>
 
 <%- include('../partials/foot') %>

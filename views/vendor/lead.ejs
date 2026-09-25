@@ -1,0 +1,111 @@
+<%- include('../partials/head') %>
+
+<h1>Lead #<%= lead.id %> - <%= lead.customer_name %></h1>
+<p class="sub">
+  <span class="badge <%= lead.status %>"><%= labels[lead.status] %></span>
+  came in <%= lead.created_at.toISOString().slice(0,10) %>
+</p>
+
+<h2>The request</h2>
+<div class="card">
+  <table>
+    <tr><th>Event</th><td><%= lead.event_type || 'not said' %></td></tr>
+    <tr><th>Date</th><td><%= lead.event_date ? lead.event_date.toISOString().slice(0,10) : 'still deciding' %></td></tr>
+    <tr><th>Guests</th><td><%= lead.guest_count || 'not said' %></td></tr>
+    <tr><th>What they want</th><td><%= lead.details %></td></tr>
+  </table>
+</div>
+
+<h2>Contact them</h2>
+<div class="card">
+  <table>
+    <tr><th>Name</th><td><%= lead.customer_name %></td></tr>
+    <tr><th>Email</th><td><a href="mailto:<%= lead.customer_email %>"><%= lead.customer_email %></a></td></tr>
+    <tr><th>Phone</th><td><%= lead.customer_phone || 'not given' %></td></tr>
+  </table>
+</div>
+
+<h2>Your price</h2>
+<div class="card">
+  <% if (lead.quoted_amount_cents) { %>
+    <table>
+      <tr><th>You quoted</th><td><%= money(lead.split.amountCents) %></td></tr>
+      <tr><th>Marketplace fee</th><td>- <%= money(lead.split.feeCents) %></td></tr>
+      <tr><th><strong>You receive</strong></th><td><strong><%= money(lead.split.vendorPayoutCents) %></strong></td></tr>
+    </table>
+  <% } else { %>
+    <p style="margin-top:0;color:#666">No price sent yet.</p>
+  <% } %>
+
+  <% if (lead.canQuote) { %>
+    <form method="post" action="/vendor/leads/<%= lead.id %>/quote">
+      <label><%= lead.quoted_amount_cents ? 'Change the price' : 'Send a price' %> (US dollars)</label>
+      <input name="price" inputmode="decimal" placeholder="2500"
+             value="<%= lead.quoted_amount_cents ? (lead.quoted_amount_cents / 100).toFixed(2) : '' %>" required>
+      <p class="hint">The customer sees this amount. The fee is taken out of it, not added on top.</p>
+      <button type="submit"><%= lead.quoted_amount_cents ? 'Update price' : 'Send price' %></button>
+    </form>
+  <% } else { %>
+    <p class="hint" style="margin-bottom:0">The price is locked now this job is <%= labels[lead.status].toLowerCase() %>.</p>
+  <% } %>
+</div>
+
+<h2>Move this along</h2>
+<div class="card">
+  <% if (lead.allowedMoves.length) { %>
+    <div class="actions">
+      <% for (const move of lead.allowedMoves) { %>
+        <form method="post" action="/vendor/leads/<%= lead.id %>/status">
+          <input type="hidden" name="status" value="<%= move %>">
+          <button type="submit">Mark <%= labels[move].toLowerCase() %></button>
+        </form>
+      <% } %>
+    </div>
+  <% } else { %>
+    <p style="margin:0;color:#666">This job is finished. Nothing left to change.</p>
+  <% } %>
+  <% if (lead.status === 'quoted') { %>
+    <p class="hint" style="margin-bottom:0">The customer pays through the site. That is what moves this to Paid - you cannot set it yourself.</p>
+  <% } %>
+</div>
+
+<% if (lead.payments.length) { %>
+  <h2>Payments</h2>
+  <table>
+    <tr><th>When</th><th>Paid</th><th>Fee</th><th>Your share</th><th>Status</th><th>How</th></tr>
+    <% for (const p of lead.payments) { %>
+      <tr>
+        <td><%= p.created_at.toISOString().slice(0,10) %></td>
+        <td><%= money(p.amount_cents) %></td>
+        <td><%= money(p.fee_cents) %></td>
+        <td><%= money(p.vendor_payout_cents) %></td>
+        <td><%= p.status %></td>
+        <td><%= p.provider === 'pretend' ? 'pretend payment' : 'Stripe test' %></td>
+      </tr>
+    <% } %>
+  </table>
+<% } %>
+
+<h2>Your notes</h2>
+<p class="hint">Only you can see these. The customer never does.</p>
+<div class="card">
+  <form method="post" action="/vendor/leads/<%= lead.id %>/note">
+    <textarea name="body" required maxlength="2000" placeholder="Called Tuesday, left a voicemail..."></textarea>
+    <button type="submit">Add note</button>
+  </form>
+
+  <% if (lead.notes.length) { %>
+    <% for (const note of lead.notes) { %>
+      <div class="note">
+        <time><%= note.created_at.toISOString().slice(0,16).replace('T',' ') %></time>
+        <%= note.body %>
+      </div>
+    <% } %>
+  <% } else { %>
+    <p class="hint" style="margin-bottom:0">No notes yet.</p>
+  <% } %>
+</div>
+
+<p style="margin-top:24px"><a href="/vendor">Back to all leads</a></p>
+
+<%- include('../partials/foot') %>

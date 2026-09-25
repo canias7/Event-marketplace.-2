@@ -45,7 +45,8 @@ home page -> pick a category -> pick a vendor -> fill in the request form ->
 see your reference number.
 
 **As a vendor** - `/vendor/signup` or log in as a demo vendor:
-see your listing and your account.
+your CRM. See every lead grouped by stage, click one to open it, send a price,
+add private notes, and move it along the pipeline.
 
 **As the admin** - `/admin/login`:
 see every vendor, and counts of customers, bookings and payments.
@@ -94,6 +95,39 @@ whole app - it's commented in plain English.
 
 **The CRM is not a separate system.** A vendor's CRM is just "all the bookings
 pointing at me, grouped by status". One table does both jobs.
+
+### What a vendor does in the CRM
+
+| Screen | What they can do |
+|---|---|
+| `/vendor` | See all leads, and a count at each stage. Click a stage to filter. |
+| `/vendor/leads/7` | Read the request, get the customer's email and phone, send a price, add private notes, move the lead along. |
+
+When they enter a price the CRM shows them the arithmetic before they commit:
+
+```
+You quoted          $2,750.00
+Marketplace fee   -   $275.00
+You receive         $2,475.00
+```
+
+The fee comes out of the quote rather than being added on top, so the number
+the customer sees is the number the vendor typed.
+
+**Two rules the CRM will not let a vendor break:**
+
+- A vendor can never mark a job **paid**. Only a real payment does that.
+  Otherwise a vendor could claim money had arrived when it had not.
+- A **paid** job cannot be cancelled from the CRM. The customer's money is
+  involved, so that needs a refund rather than a button.
+
+Quoting also locks once a job is booked, so a price cannot move after both
+sides have agreed on it.
+
+**A vendor only ever sees their own leads.** Every CRM query filters on the
+logged-in vendor, so changing the number in the address bar to a stranger's
+lead gives a 404. The tests check this by logging in as a second vendor and
+trying to both read and overwrite the first one's lead.
 
 A booking moves through these statuses, and the database refuses any other:
 
@@ -165,11 +199,12 @@ npm test          # clicks through every page and checks what comes back
 npm run db:check  # checks the SQL files are valid, without needing Neon
 ```
 
-`npm test` starts the app on a spare port with a throwaway database, runs 79
+`npm test` starts the app on a spare port with a throwaway database, runs 123
 checks, then tidies up. It covers signups, logins, wrong passwords, locked-out
 pages, password-guessing protection, admin access, browsing, booking requests
-and their validation, that data survives a restart, and that a failing page
-cannot take the whole site down.
+and their validation, the whole CRM, that one vendor cannot touch another's
+leads, that data survives a restart, and that a failing page cannot take the
+whole site down.
 
 ---
 
@@ -189,18 +224,19 @@ src/
   db.js              Talks to Neon, or to the local folder
   auth.js            Passwords, logins, who-is-allowed-where
   bookings.js        Checking and saving a booking request
+  crm.js             Every CRM query. All filter by vendor id.
   money.js           Cents to dollars, and the fee split
   handle.js          Keeps a failing page from killing the whole app
   routes/
     public.js        Home, browse, vendor profiles, booking requests
-    vendor.js        Vendor signup, login, dashboard
+    vendor.js        Vendor signup, login, and the CRM
     admin.js         Admin login, overview
 views/               The HTML pages
 scripts/
   create-admin.js    Creates your admin account
   demo-data.js       Fills the app with fake vendors and bookings
 test/
-  e2e.sh             The 79 checks
+  e2e.sh             The 123 checks
 ```
 
 ---
@@ -216,7 +252,7 @@ test/
 - [x] Customer browse: all vendors, by category, vendor profiles
 - [x] Booking requests with validation
 - [x] Demo data
-- [x] 79 end-to-end tests
-- [ ] Vendor CRM (leads pipeline and notes)
+- [x] Vendor CRM: pipeline, lead pages, quoting, notes, stage moves
+- [x] 123 end-to-end tests
 - [ ] Payments
 - [ ] Deploy to app.eventvendora.com

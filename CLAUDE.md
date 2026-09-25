@@ -91,6 +91,20 @@ The `bookings` table is both the customer's request and the vendor's lead card.
 **Do not add parallel "leads" or "deals" tables.** It was considered and
 rejected as duplicate machinery that would need syncing.
 
+`src/crm.js` holds every CRM query. **Every function in it takes a vendorId
+and filters on it.** That is the only thing stopping a vendor from reading or
+editing another vendor's leads by changing the number in the address bar.
+A lead that is not theirs comes back as null, which the routes turn into a 404.
+Never add a CRM query that trusts an id from the URL without also filtering on
+the logged-in vendor. `npm test` checks this by logging in as a second vendor
+and trying to read and overwrite the first one's lead.
+
+### A vendor can never set a booking to 'paid'
+`ALLOWED_MOVES` in `src/crm.js` leaves 'paid' out of every list on purpose -
+only a real payment sets it. A paid job also cannot be cancelled from the CRM,
+because the customer's money is involved and that needs a refund. Quoting is
+locked once a job is booked.
+
 ### Vendor categories
 12 of them, seeded in `db/seed.sql`: photography, videography, catering,
 dj-music, venues, florists, event-planners, decor-rentals, cakes-desserts,
@@ -164,11 +178,12 @@ db/seed.sql          The 12 categories
 db/reset.sql         Wipes everything (development only)
 db/setup.sh          Runs the SQL against Neon (npm run db:setup)
 db/check-schema.js   Validates the SQL without Neon (npm run db:check)
+src/crm.js           Every CRM query. All of them filter by vendor id.
 src/handle.js        Wrapper that keeps a failing page from killing the app
 src/bookings.js      Booking request validation and creation
 src/money.js         Cents to dollars, and the platform fee split
 scripts/demo-data.js 24 fake vendors and a full CRM (npm run demo-data)
-test/e2e.sh          The 79 checks (npm test)
+test/e2e.sh          The 123 checks (npm test)
 ```
 
 ---
@@ -186,8 +201,9 @@ test/e2e.sh          The 79 checks (npm test)
 - [x] Customer browse: all vendors, by category, single vendor profile
 - [x] Booking requests, with validation and a receipt page
 - [x] Demo data (`npm run demo-data`) - 24 vendors, all 12 categories
-- [x] 79 end-to-end tests (`npm test`)
-- [ ] Vendor CRM (leads pipeline and notes)
+- [x] Vendor CRM: pipeline with filters, lead pages, quoting, notes, stage moves
+- [x] Fee split shown to the vendor before they quote
+- [x] 123 end-to-end tests (`npm test`)
 - [ ] Payments
 - [ ] Deploy to app.eventvendora.com
 
@@ -198,6 +214,7 @@ Nothing left needs a live Neon connection to build.
   Booking ids run 1, 2, 3..., so `/booking/7` would let anyone read a
   stranger's request.
 - Public listings never select a vendor's email.
+- `/vendor` is the CRM. A vendor's own details are on `/vendor/account`.
 
 ### Known gap to close later
 No CSRF tokens on forms. Right now the session cookie is `sameSite: 'lax'`,

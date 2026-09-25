@@ -98,8 +98,8 @@ check "signup succeeds" "$(code -c $WORK/v.jar -X POST $BASE/vendor/signup \
   -d 'email=Sam@GoldenHour.com' -d 'password=supersecret123')" "302"
 check "logged in straight after signup" "$(code -b $WORK/v.jar $BASE/vendor)" "200"
 check "dashboard shows the business"    "$(body -b $WORK/v.jar $BASE/vendor | grep -c 'Golden Hour Photography')" "1"
-check "price shows as dollars"          "$(body -b $WORK/v.jar $BASE/vendor | grep -c '1,500.00')" "1"
-check "email was stored lowercase"      "$(body -b $WORK/v.jar $BASE/vendor | grep -c 'sam@goldenhour.com')" "1"
+check "account page shows the price"    "$(body -b $WORK/v.jar $BASE/vendor/account | grep -c '1,500.00')" "1"
+check "email was stored lowercase"      "$(body -b $WORK/v.jar $BASE/vendor/account | grep -c 'sam@goldenhour.com')" "1"
 check "vendor is NOT also an admin"     "$(whereto -b $WORK/v.jar $BASE/admin)" "/admin/login"
 
 echo
@@ -222,7 +222,83 @@ check "a demo vendor can log in"        "$(login $WORK/d.jar 'golden.hour.photog
 check "  ...and sees their dashboard"   "$(code -b $WORK/d.jar $BASE/vendor)" "200"
 
 echo
-echo "13. THE APP NEVER CRASHED"
+echo "13. THE VENDOR CRM"
+check "the vendor with a full pipeline logs in" "$(login $WORK/crm.jar 'golden.hour.photography@example.com' 'demo1234')" "302"
+
+# Find lead numbers from the page rather than hard-coding them.
+leadid() { body -b "$WORK/crm.jar" "$BASE/vendor?status=$1" | grep -oE '/vendor/leads/[0-9]+' | head -1 | grep -oE '[0-9]+'; }
+# Do something to a lead, then read the message it reported back.
+crmdo() {
+  curl -s -o /dev/null -b $WORK/crm.jar -c $WORK/crm.jar -X POST "$BASE/vendor/leads/$1/$2" -d "$3"
+  body -b $WORK/crm.jar "$BASE/vendor/leads/$1" | grep -oE 'class="(ok|error)">[^<]*' | sed -E 's/class="(ok|error)">//'
+}
+
+check "the pipeline totals 10 leads"  "$(body -b $WORK/crm.jar $BASE/vendor | grep -c '<b>10</b> All')" "1"
+check "2 sit at New"                  "$(body -b $WORK/crm.jar $BASE/vendor | grep -c '<b>2</b> New')" "1"
+check "1 sits at Paid"                "$(body -b $WORK/crm.jar $BASE/vendor | grep -c '<b>1</b> Paid')" "1"
+check "filtering to New shows 2"      "$(body -b $WORK/crm.jar "$BASE/vendor?status=new" | grep -oE '[0-9]+ leads? shown')" "2 leads shown"
+check "filtering to Paid shows 1"     "$(body -b $WORK/crm.jar "$BASE/vendor?status=paid" | grep -oE '[0-9]+ leads? shown')" "1 lead shown"
+check "a nonsense filter is ignored"  "$(body -b $WORK/crm.jar "$BASE/vendor?status=nonsense" | grep -oE '[0-9]+ leads? shown')" "10 leads shown"
+
+NEW_LEAD=$(leadid new)
+PAID_LEAD=$(leadid paid)
+DONE_LEAD=$(leadid completed)
+check "found a New lead to work on"   "$([ -n "$NEW_LEAD" ] && echo yes || echo no)" "yes"
+
+check "the lead page opens"           "$(code -b $WORK/crm.jar $BASE/vendor/leads/$NEW_LEAD)" "200"
+check "  ...with the customer email"  "$(body -b $WORK/crm.jar $BASE/vendor/leads/$NEW_LEAD | grep -c 'mailto:')" "1"
+check "  ...and offers a price box"   "$(body -b $WORK/crm.jar $BASE/vendor/leads/$NEW_LEAD | grep -c 'Send a price')" "1"
+check "a missing lead is 404"         "$(code -b $WORK/crm.jar $BASE/vendor/leads/999999)" "404"
+check "a nonsense lead id is 404"     "$(code -b $WORK/crm.jar $BASE/vendor/leads/abc)" "404"
+
+echo "   quoting"
+check "a quote is accepted"           "$(crmdo $NEW_LEAD quote 'price=2750')" "Quote sent."
+check "  ...and the lead moves to Quoted" "$(body -b $WORK/crm.jar $BASE/vendor/leads/$NEW_LEAD | grep -c 'badge quoted')" "1"
+check "  ...showing the amount quoted"    "$(body -b $WORK/crm.jar $BASE/vendor/leads/$NEW_LEAD | grep -c '2,750.00')" "1"
+check "  ...and pre-filling the price box" "$(body -b $WORK/crm.jar $BASE/vendor/leads/$NEW_LEAD | grep -c 'value="2750.00"')" "1"
+check "  ...the 10% fee"                  "$(body -b $WORK/crm.jar $BASE/vendor/leads/$NEW_LEAD | grep -c '275.00')" "1"
+check "  ...and what the vendor keeps"    "$(body -b $WORK/crm.jar $BASE/vendor/leads/$NEW_LEAD | grep -c '2,475.00')" "1"
+check "dollar signs and commas are ok"    "$(crmdo $NEW_LEAD quote 'price=$2,500.50')" "Quote sent."
+check "  ...stored to the exact cent"     "$(body -b $WORK/crm.jar $BASE/vendor/leads/$NEW_LEAD | grep -c '2,500.50')" "1"
+check "zero refused"                  "$(crmdo $NEW_LEAD quote 'price=0')" "The price must be more than zero."
+check "words refused"                 "$(crmdo $NEW_LEAD quote 'price=about two grand')" "Enter the price as a number, for example 2500 or 2500.00"
+check "blank refused"                 "$(crmdo $NEW_LEAD quote 'price=')" "Please enter a price."
+
+echo "   notes"
+check "a note is added"               "$(crmdo $NEW_LEAD note 'body=Rang Tuesday, wants a second shooter.')" "Note added."
+check "  ...and shows on the lead"    "$(body -b $WORK/crm.jar $BASE/vendor/leads/$NEW_LEAD | grep -c 'wants a second shooter')" "1"
+check "a blank note is refused"       "$(crmdo $NEW_LEAD note 'body=   ')" "Please write something in the note."
+check "notes are private to the vendor" "$(body $BASE/vendors/3 | grep -c 'second shooter')" "0"
+
+echo "   moving a lead along"
+check "it can be marked booked"        "$(crmdo $NEW_LEAD status 'status=booked')" "Moved to Booked."
+check "  ...and the price then locks"  "$(crmdo $NEW_LEAD quote 'price=99')" "You cannot change the price of a booked job."
+
+echo "   money safety"
+check "a vendor cannot mark a job paid" "$(crmdo $NEW_LEAD status 'status=paid')" "Only a real payment can mark a job as paid."
+check "a paid job cannot be cancelled"  "$(crmdo $PAID_LEAD status 'status=cancelled')" "This job has been paid for. It cannot be cancelled here - that needs a refund."
+check "a paid job can only be completed" "$(body -b $WORK/crm.jar $BASE/vendor/leads/$PAID_LEAD | grep -c 'Mark completed')" "1"
+check "a finished job is locked"        "$(body -b $WORK/crm.jar $BASE/vendor/leads/$DONE_LEAD | grep -c 'This job is finished')" "1"
+check "a made-up status is refused"     "$(crmdo $NEW_LEAD status 'status=banana')" "A booked job cannot be moved to that."
+
+echo "   ONE VENDOR MUST NOT SEE ANOTHER'S LEADS"
+check "a second vendor logs in"      "$(login $WORK/other.jar 'marlowe.field.photo@example.com' 'demo1234')" "302"
+check "their own CRM is empty"       "$(body -b $WORK/other.jar $BASE/vendor | grep -c 'No booking requests yet')" "1"
+check "they CANNOT open the lead"    "$(code -b $WORK/other.jar $BASE/vendor/leads/$NEW_LEAD)" "404"
+curl -s -o /dev/null -b $WORK/other.jar -c $WORK/other.jar -X POST $BASE/vendor/leads/$NEW_LEAD/quote  -d 'price=1'        >/dev/null
+check "  ...cannot re-price it"      "$(body -b $WORK/other.jar $BASE/vendor | grep -oE 'class="error">[^<]*' | sed 's/class="error">//' | head -1)" "That lead was not found."
+curl -s -o /dev/null -b $WORK/other.jar -c $WORK/other.jar -X POST $BASE/vendor/leads/$NEW_LEAD/status -d 'status=lost'    >/dev/null
+curl -s -o /dev/null -b $WORK/other.jar -c $WORK/other.jar -X POST $BASE/vendor/leads/$NEW_LEAD/note   -d 'body=tampered'  >/dev/null
+check "the owner's lead is untouched"   "$(body -b $WORK/crm.jar $BASE/vendor/leads/$NEW_LEAD | grep -c 'badge booked')" "1"
+check "  ...price still theirs"          "$(body -b $WORK/crm.jar $BASE/vendor/leads/$NEW_LEAD | grep -c '2,500.50')" "1"
+check "  ...and no note was planted"     "$(body -b $WORK/crm.jar $BASE/vendor/leads/$NEW_LEAD | grep -c 'tampered')" "0"
+
+echo "   the account page"
+check "account page opens"           "$(code -b $WORK/crm.jar $BASE/vendor/account)" "200"
+check "  ...showing their own email" "$(body -b $WORK/crm.jar $BASE/vendor/account | grep -c 'golden.hour.photography@example.com')" "1"
+
+echo
+echo "14. THE APP NEVER CRASHED"
 check "no unwrapped page failures" "$(grep -c 'UNHANDLED PROBLEM' $WORK/server.log || true)" "0"
 check "the app is still answering"  "$(code $BASE/)" "200"
 

@@ -1,0 +1,59 @@
+<%- include('../partials/head') %>
+
+<h1>My leads</h1>
+<p class="sub"><%= vendor.business_name %> - <%= vendor.category_name %></p>
+
+<%
+/* Click a box to see only that stage. */
+const stageLink = (s) => s ? ('/vendor?status=' + s) : '/vendor';
+%>
+
+<div class="pipe">
+  <a class="chip <%= activeStatus === '' ? 'on' : '' %>" href="<%= stageLink('') %>">
+    <b><%= counts.total %></b> All
+  </a>
+  <% for (const stage of pipeline) { %>
+    <a class="chip <%= activeStatus === stage ? 'on' : '' %>" href="<%= stageLink(stage) %>">
+      <b><%= counts[stage] %></b> <%= labels[stage] %>
+    </a>
+  <% } %>
+</div>
+
+<% if (!leads.length) { %>
+  <div class="card">
+    <% if (activeStatus) { %>
+      <p style="margin:0">Nothing at the <%= labels[activeStatus].toLowerCase() %> stage.</p>
+      <p class="hint" style="margin-bottom:0"><a href="/vendor">Show all leads</a></p>
+    <% } else { %>
+      <p style="margin:0">No booking requests yet.</p>
+      <p class="hint" style="margin-bottom:0">When a customer sends a request it appears here.</p>
+    <% } %>
+  </div>
+<% } else { %>
+  <table>
+    <tr>
+      <th>Customer</th>
+      <th>Event</th>
+      <th>Date</th>
+      <th>Quote</th>
+      <th>Stage</th>
+      <th>Notes</th>
+    </tr>
+    <% for (const lead of leads) { %>
+      <tr>
+        <td><a href="/vendor/leads/<%= lead.id %>"><%= lead.customer_name %></a></td>
+        <td>
+          <%= lead.event_type || '-' %>
+          <% if (lead.guest_count) { %><span class="hint">(<%= lead.guest_count %> guests)</span><% } %>
+        </td>
+        <td><%= lead.event_date ? lead.event_date.toISOString().slice(0,10) : 'not set' %></td>
+        <td><%= lead.quoted_amount_cents ? money(lead.quoted_amount_cents) : '-' %></td>
+        <td><span class="badge <%= lead.status %>"><%= labels[lead.status] %></span></td>
+        <td><%= lead.note_count || '-' %></td>
+      </tr>
+    <% } %>
+  </table>
+  <p class="hint"><%= leads.length %> lead<%= leads.length === 1 ? '' : 's' %> shown.</p>
+<% } %>
+
+<%- include('../partials/foot') %>

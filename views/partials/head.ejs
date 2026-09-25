@@ -32,6 +32,25 @@
   .row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
   @media (max-width: 560px) { .row2 { grid-template-columns: 1fr; } }
   a.btn { display: inline-block; margin-top: 16px; }
+  /* CRM pipeline filter row */
+  .pipe { display: flex; flex-wrap: wrap; gap: 8px; margin: 0 0 20px; }
+  .chip { display: block; padding: 8px 12px; border: 1px solid #ccc; border-radius: 4px;
+          background: #fff; text-decoration: none; color: #111; font-size: 14px; }
+  .chip.on { background: #1a1a1a; color: #fff; border-color: #1a1a1a; }
+  .chip b { font-size: 16px; }
+  .badge { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 12px;
+           background: #eee; border: 1px solid #ddd; white-space: nowrap; }
+  .badge.new { background: #e7f0fb; border-color: #b6d2f0; }
+  .badge.quoted { background: #fff3d6; border-color: #e8d48a; }
+  .badge.booked { background: #e6f0e9; border-color: #b6d6c1; }
+  .badge.paid { background: #e6f5ea; border-color: #8ccfa3; font-weight: 600; }
+  .badge.completed { background: #ececec; border-color: #ccc; }
+  .badge.cancelled, .badge.lost { background: #fbe9e9; border-color: #e8b4b4; }
+  .actions { display: flex; flex-wrap: wrap; gap: 8px; }
+  .actions form { margin: 0; }
+  .actions button { margin-top: 0; }
+  .note { border-left: 3px solid #ddd; padding: 2px 0 2px 12px; margin: 14px 0; }
+  .note time { display: block; color: #777; font-size: 12px; }
 </style>
 </head>
 <body>
@@ -39,10 +58,13 @@
   <a class="brand" href="/">Event Vendora</a>
   <a href="/browse">Browse vendors</a>
   <% if (currentVendor) { %>
-    <a href="/vendor">My dashboard</a>
+    <a href="/vendor">My leads</a>
+    <a href="/vendor/account">Account</a>
     <form method="post" action="/vendor/logout" style="margin:0"><button style="margin:0;padding:6px 12px;font-size:14px">Log out</button></form>
   <% } else { %>
     <a href="/vendor/login">Vendor login</a>
   <% } %>
 </header>
 <main>
+<% if (flash && flash.ok) { %><div class="ok"><%= flash.ok %></div><% } %>
+<% if (flash && flash.error) { %><div class="error"><%= flash.error %></div><% } %>

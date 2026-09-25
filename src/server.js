@@ -46,6 +46,10 @@ app.use(async (req, res, next) => {
   res.locals.money = money;
   res.locals.paymentMode = config.paymentMode;
   res.locals.dbBackend = db.backend;
+  /* A one-off message left over from the last page, e.g. "Quote sent".
+     Read it, then clear it, so it shows exactly once. */
+  res.locals.flash = req.session.flash || null;
+  if (req.session.flash) delete req.session.flash;
   res.locals.currentVendor = null;
   if (req.session.vendorId) {
     res.locals.currentVendor = await db.one(

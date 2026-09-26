@@ -80,8 +80,8 @@ Transportation, Entertainment.
 
 ## The database
 
-Seven tables. Read `db/schema.sql` top to bottom and you'll understand the
-whole app - it's commented in plain English.
+Seven tables. Read `db/migrations/001_initial_schema.sql` top to bottom and
+you'll understand the whole app - it's commented in plain English.
 
 | Table | Holds |
 |---|---|
@@ -139,6 +139,42 @@ new -> quoted -> booked -> paid -> completed
 **Money is always stored in whole cents**, never decimals. `$2,500.00` is
 stored as `250000`. Decimals quietly lose pennies.
 
+### Changing the database later
+
+Schema changes live in `db/migrations/` as numbered files:
+
+```
+001_initial_schema.sql   the 7 tables
+002_booking_links.sql    private links for customers
+003_integrity.sql        rules the database enforces itself
+004_indexes.sql          lookup shortcuts for the real queries
+005_updated_at.sql       keeps updated_at honest
+```
+
+Each one runs **once**, in order, and is written down in a table called
+`schema_migrations`. Next startup, anything already done is skipped. Each runs
+inside a transaction, so if one fails the database is left exactly as it was
+rather than half-changed.
+
+To change the database, add a new numbered file. **Never edit one that has
+already run** - it won't run again, so your database and the next person's
+would quietly end up different.
+
+### Rules the database enforces on its own
+
+These are in the database, not just the app, so a bug or a hand-typed
+statement can't get around them:
+
+- One customer row per email address
+- Every booking must have its private link
+- No negative prices, quotes, guest counts or payments
+- **Every payment must add up**: fee + vendor's share = what the customer paid
+- The same Stripe payment can't be recorded twice
+
+That fourth one matters most. If those three numbers ever stopped agreeing,
+someone's money would have gone missing. The database refuses to store such a
+row at all, so the books can't quietly drift.
+
 ### Two places the database can live
 
 | `DATABASE_URL` | Where the data goes |
@@ -149,6 +185,18 @@ stored as `250000`. Decimals quietly lose pennies.
 It is the same Postgres either way, so anything that works locally works on
 Neon. Switching is one line in `.env`, and `npm run test:server` proves the
 whole app on a real server before you rely on it.
+
+### What we do specially for Neon
+
+- **Connection limit.** Neon caps how many connections you may hold open, so
+  the app holds a small reusable set (`DB_POOL_MAX`, default 10).
+- **Waking it up.** Neon goes to sleep when nobody is using it, to save you
+  money. The first request has to wake it, which takes a few seconds, so the
+  first connection is retried with a growing pause rather than treated as
+  broken.
+- **Dropped connections.** When Neon sleeps, connections sitting idle die. The
+  app expects that and opens a new one instead of crashing.
+- **`/healthz`** returns `ok` or `database unreachable`, for your host to poll.
 
 **One catch with the local option:** it is built into the app rather than being
 a separate server, so only one program can open it at a time. If the app is
@@ -243,8 +291,13 @@ up to that point is tested.
 npm test             # every page, on the local database (156 + 34 checks)
 npm run test:server  # the same tests, against a REAL Postgres server
 npm run test:stripe  # the Stripe path, with a stand-in for Stripe
-npm run db:check     # checks the SQL files are valid
+npm run db:check     # runs the migrations, then proves the rules bite
 ```
+
+`npm run db:check` is worth knowing about. It runs every migration against a
+throwaway Postgres, then deliberately tries to store bad data - a payment where
+the fee skims money, a second customer with the same email, a negative price -
+and confirms the database refuses each one. 33 checks.
 
 **Why there are two.** Neon is a real Postgres server on the other end of a
 network connection, reached with a different driver than the local database
@@ -267,11 +320,11 @@ whole site down.
 ```
 CLAUDE.md            Decisions and context for anyone picking this up
 db/
-  schema.sql         The 7 tables, commented in plain English
+  migrations/        Numbered schema changes - the only place to change it
   seed.sql           The 12 categories
   reset.sql          Wipes everything (development only)
-  setup.sh           Runs the SQL against Neon
-  check-schema.js    Validates the SQL without needing Neon
+  setup.js           Runs the migrations
+  check-schema.js    Runs them, then proves the rules refuse bad data
 src/
   server.js          Starts the web server
   config.js          Reads .env. Refuses to start on a live Stripe key.
@@ -280,6 +333,7 @@ src/
   bookings.js        Checking and saving a booking request
   crm.js             Every CRM query. All filter by vendor id.
   payments.js        Pretend and Stripe payments, and booking links
+  migrate.js         Applies db/migrations once each, in order
   money.js           Cents to dollars, and the fee split
   handle.js          Keeps a failing page from killing the whole app
   routes/
@@ -314,7 +368,22 @@ test/
 - [x] Private per-booking links, so customers need no password
 - [x] Admin money view: taken, fees kept, owed to vendors
 - [x] Logins survive a restart on Neon
-- [x] 156 end-to-end checks + 34 Stripe checks, also passing on real Postgres
+- [x] Tracked migrations, database-enforced money rules, query indexes
+- [x] Neon connection pooling, cold-start retry, `/healthz`
+- [x] 33 database + 160 app + 34 Stripe checks, also passing on real Postgres
 - [ ] Deploy to app.eventvendora.com
 
-**The app is finished.** Only deployment is left.
+**The app and database are finished.** Only deployment is left.
+
+## Still to connect before a real launch
+
+Beyond Stripe keys and hosting:
+
+| What | Why it matters |
+|---|---|
+| **Email** | Nothing notifies anyone today. A vendor only learns of a request by logging in; a customer only learns their price by revisiting their link; a lost link can't be recovered. |
+| **Vendor payouts** | The app records what each vendor is owed but has no way to send it. Needs Stripe Connect. Today it's a ledger. |
+| **Photo uploads** | Vendors have no images. Matters a lot for photographers and venues. Needs file storage. |
+| **Password reset** | No way to recover a forgotten password. Depends on email. |
+
+Email is the one that would be felt first.

@@ -110,6 +110,13 @@ check "unknown page gives 404"         "$(code $BASE/no-such-page)"  "404"
 check "startup says pretend payments"  "$(grep -c 'pretend mode' $WORK/server.log)" "1"
 
 echo
+echo "1b. THE DATABASE SET ITSELF UP"
+check "all 5 migrations applied"       "$(grep -c 'applied 00' $WORK/server.log)" "5"
+check "they ran in number order"       "$(grep -oE 'applied 00[0-9]' $WORK/server.log | tr -d '\n')" "applied 001applied 002applied 003applied 004applied 005"
+check "the health page says ok"        "$(body $BASE/healthz)" "ok"
+check "  ...and returns nothing else"  "$(body $BASE/healthz | wc -c | tr -d ' ')" "2"
+
+echo
 echo "2. PAGES THAT NEED A LOGIN ARE ACTUALLY LOCKED"
 check "vendor dashboard is blocked"    "$(whereto $BASE/vendor)" "/vendor/login"
 check "admin dashboard is blocked"     "$(whereto $BASE/admin)"  "/admin/login"

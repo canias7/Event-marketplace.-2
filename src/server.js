@@ -101,6 +101,14 @@ app.use(async (req, res, next) => {
   next();
 });
 
+/* A page for the hosting service to check, rather than a person. It
+   answers "am I well?" including whether the database is reachable.
+   Deliberately says nothing else - it is public. */
+app.get('/healthz', async (req, res) => {
+  const dbOk = await db.healthy();
+  res.status(dbOk ? 200 : 503).type('text').send(dbOk ? 'ok' : 'database unreachable');
+});
+
 app.use('/', require('./routes/public'));
 app.use('/vendor', require('./routes/vendor'));
 app.use('/admin', require('./routes/admin'));

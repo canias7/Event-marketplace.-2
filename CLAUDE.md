@@ -39,6 +39,22 @@ the clever one. Do not add abstraction that isn't needed yet.
 Deliberately plain. **No design work requested or wanted.** Plain HTML that
 works. Do not spend effort on styling.
 
+### Schema changes go in db/migrations, never anywhere else
+Numbered SQL files, applied once each in order, recorded in
+`schema_migrations`. `src/migrate.js` runs them inside a transaction, so a
+failed migration leaves the database exactly as it was.
+
+**Never edit a migration that has already run anywhere** - it will not re-run,
+so two databases would silently drift apart. Add a new numbered file.
+
+There is no longer a `db/schema.sql`. The old approach re-ran one file on every
+startup, which can create a table but cannot change one, so adding a column
+meant hand-written `alter ... if not exists` hacks.
+
+Migrations use transactions, and a transaction only covers one connection. A
+pool hands out a different connection per query, so `db.js` borrows a single
+client for the migration run. Do not "simplify" that away.
+
 ### Database: Neon (hosted Postgres)
 The connection string goes in `DATABASE_URL`.
 
@@ -84,6 +100,21 @@ Same rule for the publishable key (`pk_test_` only).
 A live key must be incapable of moving real money through this app. If a
 future request seems to require relaxing this, stop and ask first.
 
+### Rules the database enforces on its own
+Migration 003 put these in the database rather than only in the app, so a bug
+or a hand-typed statement cannot get round them:
+
+- One customer row per email (the app's find-then-insert has a race otherwise)
+- Every booking must have its `public_token`
+- No negative prices, quotes, guest counts or payments
+- **`fee_cents + vendor_payout_cents = amount_cents`** on every payment row. If
+  those ever disagree, money has gone missing. This is the most valuable rule
+  in the schema - do not remove it to make a test pass.
+- One payment row per Stripe session (`provider_ref` unique)
+
+`bookings.updated_at` is stamped by a trigger (migration 005), so it stays
+honest even if a future update forgets to set it.
+
 ### Careful if `pg` is ever upgraded past version 8
 `pg` currently treats `sslmode=require` as the strict `verify-full`, which is
 what we want. In `pg` v9 it becomes the weaker libpq meaning: encrypted but the
@@ -112,6 +143,19 @@ the same Stripe session being recorded twice.
 `npm run test:stripe` proves all of that with a stand-in for Stripe, so the
 logic is tested without keys. **The live Stripe path still needs real test keys
 to confirm end to end - say so rather than implying it is proven.**
+
+### Neon-specific connection handling in src/db.js
+- **Pool limit** (`DB_POOL_MAX`, default 10). Neon caps connections and every
+  copy of the app holds its own set.
+- **Cold-start retry.** Neon sleeps when idle; the first connection can take
+  seconds. The initial connect retries 5 times with a growing pause instead of
+  treating a sleeping database as a failure.
+- **`pool.on('error')`.** An idle connection can die on its own when Neon
+  sleeps. Without that listener Node treats it as a crash and exits. Do not
+  remove it.
+
+`/healthz` returns `ok` (200) or `database unreachable` (503) for a host's
+health checks. It deliberately reveals nothing else.
 
 ### Logins and SESSION_SECRET
 With Neon, logins are stored in the database (`connect-pg-simple`, table
@@ -221,11 +265,9 @@ Do not open a pull request unless asked.
 CLAUDE.md           This file
 README.md           Plain-English guide to the project
 .env.example         Template for settings - copy to .env
-db/schema.sql        The 7 tables, commented in plain English
 db/seed.sql          The 12 categories
 db/reset.sql         Wipes everything (development only)
-db/setup.sh          Runs the SQL against Neon (npm run db:setup)
-db/check-schema.js   Validates the SQL without Neon (npm run db:check)
+db/check-schema.js   Runs the migrations and proves the rules bite (npm run db:check)
 src/crm.js           Every CRM query. All of them filter by vendor id.
 src/handle.js        Wrapper that keeps a failing page from killing the app
 src/bookings.js      Booking request validation and creation
@@ -261,10 +303,26 @@ test/stripe-wiring.js       Tests the Stripe path with a stand-in (npm run test:
 - [x] Admin money view: taken, fees kept, owed to vendors
 - [x] Logins survive a restart on Neon
 - [x] 156 end-to-end checks + 34 Stripe checks
+- [x] Tracked migrations, database-enforced integrity rules, query indexes
+- [x] Neon connection pooling, cold-start retry, `/healthz`
+- [x] 33 database checks + 160 app checks + 34 Stripe checks
 - [ ] Deploy to app.eventvendora.com
 
-The app itself is finished. Only deployment is left, which needs the user's
-DNS access and a host.
+The app and database are finished. Deployment needs the user's DNS access and
+a host.
+
+### Still needs connecting before a real launch
+Beyond Stripe keys and hosting:
+
+1. **Email.** The biggest functional gap. Nobody is notified of anything - a
+   vendor only learns of a request by logging in, a customer only learns their
+   price by revisiting their link, and a lost link cannot be recovered. Needs
+   an email service and `eventvendora.com` verified for sending.
+2. **Vendor payouts.** The app records what each vendor is owed but has no way
+   to send it. Real marketplaces use Stripe Connect. Today it is a ledger only.
+3. **Photo uploads.** Vendors have no images, which matters a lot for
+   photographers and venues. Needs object storage.
+4. **Password reset.** Depends on email.
 
 Nothing left needs a live Neon connection to build.
 

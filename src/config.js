@@ -102,8 +102,23 @@ if (!Number.isFinite(feePercent) || feePercent < 0 || feePercent > 100) {
   ]);
 }
 
+/* -------------------------------------------------------------------
+   HOW MANY DATABASE CONNECTIONS TO HOLD OPEN
+
+   Neon limits this, and every copy of the app you run has its own set.
+   Ten is plenty for one small app; lower it if Neon starts refusing
+   connections, raise it only if the app is genuinely waiting on them.
+   ------------------------------------------------------------------- */
+const dbPoolMax = Number(process.env.DB_POOL_MAX || 10);
+if (!Number.isInteger(dbPoolMax) || dbPoolMax < 1 || dbPoolMax > 100) {
+  stop('DB_POOL_MAX is not a sensible number', [
+    `Got "${process.env.DB_POOL_MAX}". It must be a whole number from 1 to 100.`,
+  ]);
+}
+
 module.exports = {
   port: Number(process.env.PORT || 3000),
+  dbPoolMax,
   isProduction,
   databaseUrl: (process.env.DATABASE_URL || '').trim(),
   sessionSecret,

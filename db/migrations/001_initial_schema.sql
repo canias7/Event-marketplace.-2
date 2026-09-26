@@ -1,14 +1,10 @@
 -- ===================================================================
--- EVENT VENDOR MARKETPLACE - DATABASE STRUCTURE
+-- MIGRATION 001 - THE SEVEN TABLES
 --
--- Read this file top to bottom and you will understand the whole app.
--- There are only 7 tables.
---
--- A "table" is a spreadsheet. Each row is one record.
--- Money is ALWAYS stored in whole cents (integers), never decimals,
--- because decimals cause rounding bugs with money.
+-- Migrations run once each, in number order, and are recorded in a
+-- table called schema_migrations so they are never run twice.
+-- Never edit a migration that has already run anywhere - add a new one.
 -- ===================================================================
-
 
 -- -------------------------------------------------------------------
 -- 1. CATEGORIES - the kinds of vendors. Photography, catering, etc.
@@ -167,28 +163,3 @@ create table if not exists payments (
 create index if not exists payments_booking_idx on payments(booking_id);
 
 
--- -------------------------------------------------------------------
--- A PRIVATE LINK FOR EACH BOOKING
---
--- Customers have no login, so they need some way back to their own
--- booking to see the price and pay it.
---
--- Booking numbers run 1, 2, 3..., so a link built from the number
--- would let anyone read strangers' bookings just by counting. Instead
--- each booking gets a long random token and the customer's link holds
--- that. Unguessable, and it opens exactly one booking.
--- -------------------------------------------------------------------
-alter table bookings add column if not exists public_token text;
-
--- Any booking made before this column existed gets a token now.
-update bookings
-   set public_token = md5(random()::text || id::text || clock_timestamp()::text)
- where public_token is null;
-
-create unique index if not exists bookings_public_token_idx
-  on bookings(public_token);
-
--- Stops the same Stripe payment being recorded twice, for instance if
--- someone reloads the "thanks for paying" page or replays the link.
-create unique index if not exists payments_provider_ref_idx
-  on payments(provider_ref) where provider_ref is not null;

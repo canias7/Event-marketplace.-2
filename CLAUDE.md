@@ -91,6 +91,38 @@ certificate is **not** checked. `package.json` pins `pg` to `^8`, so this cannot
 change by accident. If that pin is ever raised, change the connection string to
 `sslmode=verify-full` in the same commit.
 
+### How a customer gets back to their booking
+Customers have no login. Each booking carries a long random `public_token`
+and the customer's only way in is `/booking/<token>`. Booking ids run
+1, 2, 3..., so a link built from the id would let anyone read strangers'
+bookings by counting. **Never add a customer-facing page keyed on the booking
+id.**
+
+### Payments
+`src/payments.js` holds both modes behind one door. `recordPayment` claims the
+booking with a conditional UPDATE (`where status = any(PAYABLE)`) so two
+payments arriving together cannot both succeed - checking first and then
+updating would let both through.
+
+On the way back from Stripe the app asks Stripe directly and refuses unless the
+session is paid, belongs to this booking (`client_reference_id`), and the amount
+matches the quote to the cent. A unique index on `payments.provider_ref` stops
+the same Stripe session being recorded twice.
+
+`npm run test:stripe` proves all of that with a stand-in for Stripe, so the
+logic is tested without keys. **The live Stripe path still needs real test keys
+to confirm end to end - say so rather than implying it is proven.**
+
+### Logins and SESSION_SECRET
+With Neon, logins are stored in the database (`connect-pg-simple`, table
+`user_sessions`) so a restart or redeploy does not log everyone out. On the
+local database they stay in memory.
+
+That only works if `SESSION_SECRET` is set. Without it config invents a new one
+each startup, the old cookies can no longer be checked, and everyone is logged
+out anyway - database store or not. The startup output says so in plain terms
+when that is the case. This cost a debugging round; do not remove that message.
+
 ### Money
 Always stored as **whole cents in integer columns**, never decimals or floats.
 `$2,500.00` is `250000`. Column names end in `_cents` so this is obvious.
@@ -201,6 +233,7 @@ src/money.js         Cents to dollars, and the platform fee split
 scripts/demo-data.js 24 fake vendors and a full CRM (npm run demo-data)
 test/e2e.sh          The checks. Runs against either database.
 test/with-real-postgres.sh  Sets up a real Postgres and runs them (npm run test:server)
+test/stripe-wiring.js       Tests the Stripe path with a stand-in (npm run test:stripe)
 ```
 
 ---
@@ -223,8 +256,15 @@ test/with-real-postgres.sh  Sets up a real Postgres and runs them (npm run test:
 - [x] 123 end-to-end tests (`npm test`)
 - [x] Whole suite also passes against a real Postgres server over verified TLS
       (`npm run test:server`)
-- [ ] Payments
+- [x] Payments: pretend mode and the full Stripe test-mode path
+- [x] Private per-booking links for customers
+- [x] Admin money view: taken, fees kept, owed to vendors
+- [x] Logins survive a restart on Neon
+- [x] 156 end-to-end checks + 34 Stripe checks
 - [ ] Deploy to app.eventvendora.com
+
+The app itself is finished. Only deployment is left, which needs the user's
+DNS access and a host.
 
 Nothing left needs a live Neon connection to build.
 

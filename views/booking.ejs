@@ -1,0 +1,89 @@
+<%- include('partials/head') %>
+
+<h1>Your booking with <%= booking.vendor_name %></h1>
+<p class="sub">Reference #<%= booking.id %> - <%= booking.category_name %></p>
+
+<%
+const STATUS_TEXT = {
+  new:       'Sent. Waiting for the vendor to reply with a price.',
+  quoted:    'The vendor has sent you a price. See below.',
+  booked:    'Agreed with the vendor. Payment still to come.',
+  paid:      'Paid. You are all set.',
+  completed: 'Finished. Thanks for using Event Vendora.',
+  cancelled: 'Cancelled.',
+  lost:      'Closed.',
+};
+%>
+
+<div class="card">
+  <p style="margin-top:0"><strong>Where this stands:</strong> <%= STATUS_TEXT[booking.status] %></p>
+  <table>
+    <tr><th>Vendor</th><td><%= booking.vendor_name %></td></tr>
+    <tr><th>Event</th><td><%= booking.event_type || 'not said' %></td></tr>
+    <tr><th>Date</th><td><%= booking.event_date ? booking.event_date.toISOString().slice(0,10) : 'still deciding' %></td></tr>
+    <tr><th>Guests</th><td><%= booking.guest_count || 'not said' %></td></tr>
+    <tr><th>What you asked for</th><td><%= booking.details %></td></tr>
+  </table>
+</div>
+
+<% if (booking.quoted_amount_cents) { %>
+  <h2>The price</h2>
+  <div class="card">
+    <p style="margin-top:0;font-size:22px"><strong><%= money(booking.quoted_amount_cents) %></strong></p>
+
+    <% if (booking.canPay) { %>
+      <p class="hint">You pay Event Vendora, not the vendor directly. We pass their share on.</p>
+
+      <% if (usingStripe) { %>
+        <div class="mode">
+          <strong>Stripe test mode.</strong> No real money moves. Use card number
+          <code>4242 4242 4242 4242</code>, any future expiry date, any 3-digit code.
+        </div>
+      <% } else { %>
+        <div class="mode">
+          <strong>Pretend payment.</strong> No card needed and no money moves - this
+          is a demo. Clicking below simply records the payment.
+        </div>
+      <% } %>
+
+      <form method="post" action="/booking/<%= booking.public_token %>/pay">
+        <button type="submit">Pay <%= money(booking.quoted_amount_cents) %></button>
+      </form>
+
+    <% } else if (booking.status === 'paid' || booking.status === 'completed') { %>
+      <p class="ok" style="margin-bottom:0">Paid in full. Nothing more to do.</p>
+    <% } else { %>
+      <p class="hint" style="margin-bottom:0">This booking is <%= booking.status %>, so there is nothing to pay.</p>
+    <% } %>
+  </div>
+<% } else { %>
+  <h2>The price</h2>
+  <div class="card">
+    <p style="margin:0;color:#666">The vendor has not sent a price yet. This page will show it when they do.</p>
+  </div>
+<% } %>
+
+<% if (booking.payments.length) { %>
+  <h2>Your receipt</h2>
+  <table>
+    <tr><th>When</th><th>Amount</th><th>Status</th><th>How</th></tr>
+    <% for (const p of booking.payments) { %>
+      <tr>
+        <td><%= p.created_at.toISOString().slice(0,10) %></td>
+        <td><%= money(p.amount_cents) %></td>
+        <td><%= p.status %></td>
+        <td><%= p.provider === 'pretend' ? 'pretend payment' : 'Stripe test card' %></td>
+      </tr>
+    <% } %>
+  </table>
+<% } %>
+
+<h2>Keep this link</h2>
+<div class="card">
+  <p style="margin-top:0" class="hint">Bookmark this page. It is the only way back to this booking - there is no password to remember.</p>
+  <input readonly value="/booking/<%= booking.public_token %>" onclick="this.select()">
+</div>
+
+<p style="margin-top:24px"><a href="/">Browse more vendors</a></p>
+
+<%- include('partials/foot') %>

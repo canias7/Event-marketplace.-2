@@ -47,13 +47,17 @@ body()  { curl -s "$@"; }
 errmsg(){ curl -s "$@" | grep -o 'class="error">[^<]*' | sed 's/class="error">//'; }
 
 # The app always runs with the throwaway database and no Stripe keys.
-run_app() { PORT=$PORT LOCAL_DB_DIR="$WORK/db" DATABASE_URL="$DB_URL" STRIPE_SECRET_KEY= STRIPE_PUBLISHABLE_KEY= "$@"; }
+# A fixed SESSION_SECRET, because a random one changes on every restart and
+# would log everyone out regardless of where logins are stored.
+SECRET=testing-only-fixed-secret-0123456789abcdef
+
+run_app() { PORT=$PORT LOCAL_DB_DIR="$WORK/db" DATABASE_URL="$DB_URL" SESSION_SECRET="$SECRET" STRIPE_SECRET_KEY= STRIPE_PUBLISHABLE_KEY= "$@"; }
 
 # Started as a plain command with the settings in front, NOT through a
 # shell function - otherwise $! is the wrapper's id and we would later
 # "stop" the wrapper while the app kept running.
 start_server() {
-  PORT=$PORT LOCAL_DB_DIR="$WORK/db" DATABASE_URL="$DB_URL" STRIPE_SECRET_KEY= STRIPE_PUBLISHABLE_KEY= \
+  PORT=$PORT LOCAL_DB_DIR="$WORK/db" DATABASE_URL="$DB_URL" SESSION_SECRET="$SECRET" STRIPE_SECRET_KEY= STRIPE_PUBLISHABLE_KEY= \
     node src/server.js >> "$WORK/server.log" 2>&1 &
   SERVER_PID=$!
   for _ in $(seq 1 40); do
@@ -244,6 +248,22 @@ run_app node scripts/demo-data.js --force > "$WORK/demo.log" 2>&1
 check "demo data loaded"        "$(grep -c '24 vendors' $WORK/demo.log)" "1"
 check "it printed a login"      "$(grep -c 'password: demo1234' $WORK/demo.log)" "1"
 start_server
+
+# This is the clearest difference between the two databases. Logins are
+# kept in memory locally, so a restart forgets them. On a real server they
+# are kept in the database, so a restart - or a redeploy - keeps everyone
+# logged in.
+if [ -z "$DB_URL" ]; then
+  check "a restart logs the admin out (in memory)" "$(whereto -b $WORK/a.jar $BASE/admin)" "/admin/login"
+  check "  ...and logging in again works"          "$(code -c $WORK/a.jar -X POST $BASE/admin/login -d 'email=owner@eventvendora.com' -d 'password=adminpass123')" "302"
+  check "  ...restoring admin access"              "$(code -b $WORK/a.jar $BASE/admin)" "200"
+else
+  check "logins are kept in the database"      "$(grep -c 'LOGINS: kept in the database' $WORK/server.log)" "2"
+check "  ...with a lasting secret"          "$(grep -c 'SESSION_SECRET is not set' $WORK/server.log)" "0"
+  check "a restart does NOT log the admin out" "$(code -b $WORK/a.jar $BASE/admin)" "200"
+  check "  ...no second login needed"          "$(body -b $WORK/a.jar $BASE/admin | grep -c 'Customers paid in total')" "1"
+fi
+
 check "browse now shows 26 vendors"     "$(body $BASE/browse | grep -oE '[0-9]+ vendors')" "26 vendors"
 check "every category has a vendor"     "$(body $BASE/ | grep -c '<td>0</td>')" "0"
 check "a demo vendor can log in"        "$(login $WORK/d.jar 'golden.hour.photography@example.com' 'demo1234')" "302"
@@ -326,7 +346,67 @@ check "account page opens"           "$(code -b $WORK/crm.jar $BASE/vendor/accou
 check "  ...showing their own email" "$(body -b $WORK/crm.jar $BASE/vendor/account | grep -c 'golden.hour.photography@example.com')" "1"
 
 echo
-echo "14. THE APP NEVER CRASHED"
+echo "14. PAYING FOR A BOOKING (pretend mode)"
+
+# A fresh customer request, so this section does not depend on earlier ones.
+curl -s -o /dev/null -c $WORK/payer.jar -X POST $BASE/vendors/1/request \
+  -d 'name=Robin Vale' -d 'email=robin@example.com' -d 'eventDate=2099-08-01' \
+  -d 'eventType=Wedding' -d 'guestCount=70' -d 'details=Six hours of coverage.' >/dev/null
+
+PAY_TOKEN=$(body -b $WORK/payer.jar $BASE/request-sent | grep -oE '/booking/[0-9a-f]+' | head -1 | sed 's|/booking/||')
+PAY_ID=$(body -b $WORK/payer.jar $BASE/request-sent | grep -oE 'reference is <strong>#[0-9]+' | grep -oE '[0-9]+')
+
+check "the customer gets a private link"   "$([ ${#PAY_TOKEN} -ge 32 ] && echo long-enough || echo "too short: ${#PAY_TOKEN}")" "long-enough"
+check "the link opens their booking"       "$(code $BASE/booking/$PAY_TOKEN)" "200"
+check "  ...with no login needed"          "$(body $BASE/booking/$PAY_TOKEN | grep -c 'Waiting for the vendor')" "1"
+check "  ...saying no price has come yet"  "$(body $BASE/booking/$PAY_TOKEN | grep -c 'has not sent a price yet')" "1"
+
+echo "   the link must be unguessable"
+check "a made-up token is 404"          "$(code $BASE/booking/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa)" "404"
+check "a short token is 404"            "$(code $BASE/booking/abc)" "404"
+check "the booking NUMBER is 404"       "$(code $BASE/booking/$PAY_ID)" "404"
+check "one character off is 404"        "$(code $BASE/booking/$(printf '%s' "${PAY_TOKEN:0:47}"; [ "${PAY_TOKEN: -1}" = "a" ] && echo b || echo a))" "404"
+check "quote marks in the link are 404" "$(code --get --data-urlencode 'x=1' "$BASE/booking/%27%20or%201%3D1")" "404"
+check "  ...and the app still works"    "$(code $BASE/)" "200"
+
+echo "   paying too early"
+curl -s -o /dev/null -b $WORK/payer.jar -c $WORK/payer.jar -X POST $BASE/booking/$PAY_TOKEN/pay >/dev/null
+check "cannot pay before a price exists" "$(body -b $WORK/payer.jar $BASE/booking/$PAY_TOKEN | grep -oE 'class="error">[^<]*' | sed 's/class="error">//')" "This booking cannot be paid yet. The vendor has not sent a price."
+
+echo "   the vendor sends a price"
+check "vendor logs in"       "$(login $WORK/payv.jar 'sam@goldenhour.com' 'supersecret123')" "302"
+curl -s -o /dev/null -b $WORK/payv.jar -c $WORK/payv.jar -X POST $BASE/vendor/leads/$PAY_ID/quote -d 'price=2600' >/dev/null
+check "the quote lands on the lead" "$(body -b $WORK/payv.jar $BASE/vendor/leads/$PAY_ID | grep -c 'badge quoted')" "1"
+
+echo "   the customer pays"
+check "they now see the price"        "$(body $BASE/booking/$PAY_TOKEN | grep -c '2,600.00')" "2"
+check "they are told it is pretend"   "$(body $BASE/booking/$PAY_TOKEN | grep -c 'Pretend payment')" "1"
+check "  ...and no card is asked for" "$(body $BASE/booking/$PAY_TOKEN | grep -ci 'card number')" "0"
+curl -s -o /dev/null -b $WORK/payer.jar -c $WORK/payer.jar -X POST $BASE/booking/$PAY_TOKEN/pay >/dev/null
+check "the payment goes through"      "$(body -b $WORK/payer.jar $BASE/booking/$PAY_TOKEN | grep -oE 'class="ok">[^<]*' | sed 's/class="ok">//')" "Payment received. Thank you!"
+check "  ...and it shows as paid"     "$(body $BASE/booking/$PAY_TOKEN | grep -c 'Paid in full')" "1"
+check "  ...with a receipt"           "$(body $BASE/booking/$PAY_TOKEN | grep -c 'pretend payment')" "1"
+
+echo "   paying twice must not work"
+curl -s -o /dev/null -b $WORK/payer.jar -c $WORK/payer.jar -X POST $BASE/booking/$PAY_TOKEN/pay >/dev/null
+check "a second payment is refused"   "$(body -b $WORK/payer.jar $BASE/booking/$PAY_TOKEN | grep -oE 'class="error">[^<]*' | sed 's/class="error">//')" "This booking has already been paid for."
+check "only ONE receipt line exists"  "$(body $BASE/booking/$PAY_TOKEN | grep -c 'pretend payment')" "1"
+
+echo "   what the vendor sees"
+check "their lead is now paid"        "$(body -b $WORK/payv.jar $BASE/vendor/leads/$PAY_ID | grep -c 'badge paid')" "1"
+check "the fee is 10% of 2600"        "$(body -b $WORK/payv.jar $BASE/vendor/leads/$PAY_ID | grep -c '260.00')" "2"
+check "their share is 2340"           "$(body -b $WORK/payv.jar $BASE/vendor/leads/$PAY_ID | grep -c '2,340.00')" "2"
+check "they cannot re-price it now"   "$(curl -s -o /dev/null -b $WORK/payv.jar -c $WORK/payv.jar -X POST $BASE/vendor/leads/$PAY_ID/quote -d 'price=1'; body -b $WORK/payv.jar $BASE/vendor/leads/$PAY_ID | grep -oE 'class="error">[^<]*' | sed 's/class="error">//')" "You cannot change the price of a paid job."
+check "they CANNOT cancel a paid job" "$(curl -s -o /dev/null -b $WORK/payv.jar -c $WORK/payv.jar -X POST $BASE/vendor/leads/$PAY_ID/status -d 'status=cancelled'; body -b $WORK/payv.jar $BASE/vendor/leads/$PAY_ID | grep -oE 'class="error">[^<]*' | sed 's/class="error">//')" "This job has been paid for. It cannot be cancelled here - that needs a refund."
+
+echo "   what the admin sees"
+check "the money section is there"    "$(body -b $WORK/a.jar $BASE/admin | grep -c 'Customers paid in total')" "1"
+check "the fee row is there"          "$(body -b $WORK/a.jar $BASE/admin | grep -c 'Your fees from that')" "1"
+check "this payment is listed"        "$(body -b $WORK/a.jar $BASE/admin | grep -c '<td>#'$PAY_ID'</td>')" "1"
+check "the mode is stated"            "$(body -b $WORK/a.jar $BASE/admin | grep -c 'pretend mode')" "1"
+
+echo
+echo "15. THE APP NEVER CRASHED"
 check "no unwrapped page failures" "$(grep -c 'UNHANDLED PROBLEM' $WORK/server.log || true)" "0"
 check "the app is still answering"  "$(code $BASE/)" "200"
 

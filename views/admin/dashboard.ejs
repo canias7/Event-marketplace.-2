@@ -12,6 +12,38 @@
   </table>
 </div>
 
+<h2>Money</h2>
+<div class="mode">
+  Payments are running in
+  <strong><%= paymentMode === 'pretend' ? 'pretend mode' : 'Stripe TEST mode' %></strong>.
+  <%= paymentMode === 'pretend' ? 'Nothing below involved real money.' : 'These are test-mode payments only.' %>
+</div>
+<div class="card">
+  <table>
+    <tr><th>Customers paid in total</th><td><%= money(totals.taken) %></td></tr>
+    <tr><th>Your fees from that</th><td><strong><%= money(totals.fees) %></strong></td></tr>
+    <tr><th>Owed on to vendors</th><td><%= money(totals.owedToVendors) %></td></tr>
+  </table>
+</div>
+
+<% if (recentPayments.length) { %>
+  <h2>Recent payments</h2>
+  <table>
+    <tr><th>When</th><th>Vendor</th><th>Booking</th><th>Paid</th><th>Your fee</th><th>Vendor gets</th><th>How</th></tr>
+    <% for (const p of recentPayments) { %>
+      <tr>
+        <td><%= p.created_at.toISOString().slice(0,10) %></td>
+        <td><%= p.vendor_name %></td>
+        <td>#<%= p.booking_id %></td>
+        <td><%= money(p.amount_cents) %></td>
+        <td><%= money(p.fee_cents) %></td>
+        <td><%= money(p.vendor_payout_cents) %></td>
+        <td><%= p.provider === 'pretend' ? 'pretend' : 'Stripe test' %></td>
+      </tr>
+    <% } %>
+  </table>
+<% } %>
+
 <h2>Vendors</h2>
 <table>
   <tr><th>Business</th><th>Category</th><th>City</th><th>Email</th><th>Joined</th></tr>

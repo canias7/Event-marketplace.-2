@@ -8,6 +8,7 @@
 
 const db = require('./db');
 const { cleanEmail, emailProblem } = require('./auth');
+const { newToken } = require('./payments');
 
 /* Today as YYYY-MM-DD, so we can tell if an event date is in the past. */
 const today = () => new Date().toISOString().slice(0, 10);
@@ -99,15 +100,16 @@ async function requestBooking(vendorId, form) {
   }
 
   const booking = await db.one(
-    `insert into bookings (vendor_id, customer_id, event_date, event_type, guest_count, details, status)
-     values ($1,$2,$3,$4,$5,$6,'new')
-     returning id`,
+    `insert into bookings (vendor_id, customer_id, event_date, event_type, guest_count,
+                           details, status, public_token)
+     values ($1,$2,$3,$4,$5,$6,'new',$7)
+     returning id, public_token`,
     [vendor.id, customer.id, date.value,
      String(form.eventType || '').trim().slice(0, 120),
-     guests.value, details]
+     guests.value, details, newToken()]
   );
 
-  return { booking: { id: booking.id, vendor } };
+  return { booking: { id: booking.id, token: booking.public_token, vendor } };
 }
 
 module.exports = { findPublicVendor, requestBooking, readEventDate, readGuestCount };

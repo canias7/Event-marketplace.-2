@@ -12,6 +12,7 @@ const express = require('express');
 const db = require('../db');
 const { handle } = require('../handle');
 const { findPublicVendor, requestBooking } = require('../bookings');
+const payments = require('../payments');
 
 const router = express.Router();
 
@@ -102,7 +103,11 @@ router.post('/vendors/:id/request', handle(async (req, res) => {
   /* Remember the booking on the session rather than putting its number
      in the address bar. Booking numbers run 1, 2, 3..., so a visitor
      could otherwise change the number and read someone else's request. */
-  req.session.lastBooking = { id: result.booking.id, vendorName: result.booking.vendor.business_name };
+  req.session.lastBooking = {
+    id: result.booking.id,
+    token: result.booking.token,
+    vendorName: result.booking.vendor.business_name,
+  };
   res.redirect('/request-sent');
 }));
 
@@ -111,5 +116,48 @@ router.get('/request-sent', (req, res) => {
   if (!sent) return res.redirect('/');
   res.render('request-sent', { title: 'Request sent', sent });
 });
+
+/* ===================================================================
+   THE CUSTOMER'S OWN BOOKING PAGE
+
+   Reached by the long random link in /booking/<token>. No login: the
+   link IS the proof, which is why it has to be unguessable.
+   =================================================================== */
+
+router.get('/booking/:token', handle(async (req, res) => {
+  const booking = await payments.findByToken(req.params.token);
+  if (!booking) return res.status(404).render('not-found', { title: 'Booking not found' });
+
+  res.render('booking', { title: 'Your booking', booking, usingStripe: payments.isStripe() });
+}));
+
+/* The Pay button. Which of the two things happens depends only on
+   whether a Stripe test key was set when the app started. */
+router.post('/booking/:token/pay', handle(async (req, res) => {
+  const token = req.params.token;
+
+  if (payments.isStripe()) {
+    const origin = `${req.protocol}://${req.get('host')}`;
+    const started = await payments.startStripeCheckout(token, origin);
+    if (started.error) {
+      req.session.flash = { error: started.error };
+      return res.redirect('/booking/' + token);
+    }
+    return res.redirect(started.redirectTo);
+  }
+
+  const paid = await payments.payPretend(token);
+  req.session.flash = paid.error ? { error: paid.error } : { ok: 'Payment received. Thank you!' };
+  res.redirect('/booking/' + token);
+}));
+
+/* Where Stripe sends the customer back to. We ask Stripe whether the
+   payment really happened rather than believing the browser. */
+router.get('/booking/:token/paid', handle(async (req, res) => {
+  const token = req.params.token;
+  const done = await payments.finishStripeCheckout(token, req.query.session_id);
+  req.session.flash = done.error ? { error: done.error } : { ok: 'Payment received. Thank you!' };
+  res.redirect('/booking/' + token);
+}));
 
 module.exports = router;

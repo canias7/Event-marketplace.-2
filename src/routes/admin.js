@@ -50,6 +50,30 @@ router.get('/', auth.requireAdmin, handle(async (req, res) => {
       order by v.created_at desc limit 100`
   );
 
+  /* The money. sum() returns a bigint, which arrives as text, so each
+     one is turned back into a number here. */
+  const totals = await db.one(
+    `select coalesce(sum(amount_cents),0)::bigint        as taken,
+            coalesce(sum(fee_cents),0)::bigint           as fees,
+            coalesce(sum(vendor_payout_cents),0)::bigint as owed_to_vendors
+       from payments where status = 'paid'`
+  );
+
+  const money = {
+    taken:         Number(totals.taken),
+    fees:          Number(totals.fees),
+    owedToVendors: Number(totals.owed_to_vendors),
+  };
+
+  const recentPayments = await db.query(
+    `select p.amount_cents, p.fee_cents, p.vendor_payout_cents, p.status, p.provider,
+            p.created_at, p.booking_id, v.business_name as vendor_name
+       from payments p
+       join bookings b on b.id = p.booking_id
+       join vendors v on v.id = b.vendor_id
+      order by p.created_at desc limit 25`
+  );
+
   res.render('admin/dashboard', {
     title: 'Admin',
     counts: {
@@ -59,6 +83,9 @@ router.get('/', auth.requireAdmin, handle(async (req, res) => {
       payments:  await countOf('payments'),
     },
     vendors: vendors.rows,
+    totals: money,
+    recentPayments: recentPayments.rows,
+    paymentMode: require('../config').paymentMode,
   });
 }));
 

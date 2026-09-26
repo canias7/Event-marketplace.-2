@@ -41,8 +41,8 @@ Then log in at `/admin/login`.
 ## What you can click through today
 
 **As a customer** - no login needed:
-home page -> pick a category -> pick a vendor -> fill in the request form ->
-see your reference number.
+home page -> pick a category -> pick a vendor -> send a request -> get a
+private link -> come back to it, see the vendor's price, and pay.
 
 **As a vendor** - `/vendor/signup` or log in as a demo vendor:
 your CRM. See every lead grouped by stage, click one to open it, send a price,
@@ -177,6 +177,22 @@ To wipe and start over: `npm run db:setup -- --reset`
 
 ---
 
+## How a customer comes back without a password
+
+Customers do not sign up. When a request is sent, the booking gets a long
+random link like:
+
+```
+/booking/8f3c1a9e42b7d05c6e1f8a3b9d4c7e20a5b6f1c8d3e9a2b4
+```
+
+That link is the only way in, which is why it is random rather than
+`/booking/7`. Booking numbers run 1, 2, 3... - a link built from the number
+would let anyone read other people's bookings just by counting.
+
+The customer's page shows where things stand, the price once the vendor sends
+one, and the Pay button.
+
 ## Payments
 
 Three modes, decided at startup by looking at your Stripe key:
@@ -191,13 +207,42 @@ That last row is deliberate and tested. The Stripe account is shared with a
 real business, so a live key must be incapable of moving real money here. It is
 not a warning you can click past - the app simply will not run.
 
+### What happens on a payment
+
+The customer pays the marketplace. One payment row records all three numbers so
+the split is never recalculated or guessed:
+
+```
+Customer pays      $2,600.00
+Your fee (10%)       $260.00
+Vendor is owed     $2,340.00
+```
+
+The vendor sees this on their lead. You see the running totals on `/admin`.
+
+A booking can only be paid once. The app claims the booking and the payment in
+a single step, so two payments arriving at the same moment cannot both succeed.
+Reloading the "thanks for paying" page does not pay twice either.
+
+### About the Stripe half
+
+Coming back from Stripe, the app asks **Stripe** whether the payment happened
+rather than believing the browser, and refuses unless the payment is complete,
+belongs to this exact booking, and the amount matches the quote to the cent.
+
+`npm run test:stripe` proves that logic with a stand-in for Stripe - including
+dishonest replies, to check the app does not simply trust them. **The live
+Stripe path still needs your real test keys to confirm end to end.** Everything
+up to that point is tested.
+
 ---
 
 ## Checking things work
 
 ```bash
-npm test             # clicks through every page, on the local database
+npm test             # every page, on the local database (156 + 34 checks)
 npm run test:server  # the same tests, against a REAL Postgres server
+npm run test:stripe  # the Stripe path, with a stand-in for Stripe
 npm run db:check     # checks the SQL files are valid
 ```
 
@@ -234,6 +279,7 @@ src/
   auth.js            Passwords, logins, who-is-allowed-where
   bookings.js        Checking and saving a booking request
   crm.js             Every CRM query. All filter by vendor id.
+  payments.js        Pretend and Stripe payments, and booking links
   money.js           Cents to dollars, and the fee split
   handle.js          Keeps a failing page from killing the whole app
   routes/
@@ -247,6 +293,7 @@ scripts/
 test/
   e2e.sh             The checks. Runs against either database.
   with-real-postgres.sh  Sets up a real Postgres and runs them
+  stripe-wiring.js       Tests the Stripe path with a stand-in
 ```
 
 ---
@@ -263,6 +310,11 @@ test/
 - [x] Booking requests with validation
 - [x] Demo data
 - [x] Vendor CRM: pipeline, lead pages, quoting, notes, stage moves
-- [x] 123 end-to-end tests, also passing against a real Postgres server
-- [ ] Payments
+- [x] Payments: pretend mode and the full Stripe test-mode path
+- [x] Private per-booking links, so customers need no password
+- [x] Admin money view: taken, fees kept, owed to vendors
+- [x] Logins survive a restart on Neon
+- [x] 156 end-to-end checks + 34 Stripe checks, also passing on real Postgres
 - [ ] Deploy to app.eventvendora.com
+
+**The app is finished.** Only deployment is left.

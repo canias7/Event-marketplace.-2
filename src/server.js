@@ -23,9 +23,51 @@ app.set('views', path.join(__dirname, '..', 'views'));
 // Reads submitted form fields into req.body.
 app.use(express.urlencoded({ extended: false, limit: '100kb' }));
 
+/* ---------------------------------------------------------------
+   WHERE LOGINS ARE REMEMBERED
+
+   The cookie in the browser only holds a reference. The actual "this
+   person is logged in" record is kept here.
+
+   On Neon it goes in the database, so restarting or redeploying the app
+   does NOT log everybody out, and several copies of the app can share
+   one set of logins.
+
+   On the local database it stays in memory, because the local database
+   can only be opened by one program and the session library needs its
+   own connection. That means a restart logs you out while developing,
+   which is a fair trade for needing no setup.
+   --------------------------------------------------------------- */
+let sessionStore;                       // undefined = keep it in memory
+
+if (config.databaseUrl) {
+  const PgSession = require('connect-pg-simple')(session);
+  sessionStore = new PgSession({
+    conString: config.databaseUrl,
+    createTableIfMissing: true,
+    tableName: 'user_sessions',
+    pruneSessionInterval: 60 * 60,      // tidy up expired logins hourly
+  });
+  sessionStore.on('error', (err) => console.error('SESSION STORE PROBLEM:', err.message));
+  console.log('LOGINS: kept in the database');
+} else {
+  console.log('LOGINS: kept in memory (a restart logs everyone out)');
+}
+
+/* Storing logins in the database only helps if the cookies can still be
+   checked afterwards. They are checked against SESSION_SECRET, so a
+   throwaway secret undoes the whole thing - quietly, which is worse. */
+if (config.sessionSecretIsTemporary) {
+  console.log('        ...but SESSION_SECRET is not set, so a new one is made each');
+  console.log('        startup and a restart still logs everyone out.');
+  console.log('        Put a long random value in .env as SESSION_SECRET to stop that.');
+  console.log('        Generate one:  node -e "console.log(require(\'crypto\').randomBytes(32).toString(\'hex\'))"');
+}
+
 // Remembers who is logged in, using a signed cookie.
 app.use(session({
   name: 'eventvendora.sid',
+  store: sessionStore,
   secret: config.sessionSecret,
   resave: false,
   saveUninitialized: false,

@@ -73,6 +73,8 @@ const isProduction = process.env.NODE_ENV === 'production';
 const placeholder = 'change-me-to-something-long-and-random';
 let sessionSecret = (process.env.SESSION_SECRET || '').trim();
 
+let sessionSecretIsTemporary = false;
+
 if (!sessionSecret || sessionSecret === placeholder) {
   if (isProduction) {
     stop('SESSION_SECRET is not set', [
@@ -83,7 +85,11 @@ if (!sessionSecret || sessionSecret === placeholder) {
       'Generate one with:  node -e "console.log(require(\'crypto\').randomBytes(32).toString(\'hex\'))"',
     ]);
   }
+  /* A brand new secret every startup. Convenient - nothing to set up -
+     but it means the cookies handed out before the restart can no longer
+     be checked, so everyone is logged out. The startup message says so. */
   sessionSecret = require('crypto').randomBytes(32).toString('hex');
+  sessionSecretIsTemporary = true;
 }
 
 /* -------------------------------------------------------------------
@@ -101,6 +107,7 @@ module.exports = {
   isProduction,
   databaseUrl: (process.env.DATABASE_URL || '').trim(),
   sessionSecret,
+  sessionSecretIsTemporary,
   feePercent,
   paymentMode,                 // 'pretend' or 'stripe'
   stripeSecret,

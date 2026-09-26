@@ -11,6 +11,7 @@
 const db = require('../src/db');
 const auth = require('../src/auth');
 const { splitFee } = require('../src/money');
+const { newToken } = require('../src/payments');
 const config = require('../src/config');
 
 const PASSWORD = 'demo1234';
@@ -139,11 +140,12 @@ const dateFromNow = (days) => {
     const [customerIndex, days, eventType, guests, status, quoteDollars] = BOOKINGS[i];
 
     const booking = await db.one(
-      `insert into bookings (vendor_id, customer_id, event_date, event_type, guest_count, details, status, quoted_amount_cents)
-       values ($1,$2,$3,$4,$5,$6,$7,$8) returning id`,
+      `insert into bookings (vendor_id, customer_id, event_date, event_type, guest_count,
+                             details, status, quoted_amount_cents, public_token)
+       values ($1,$2,$3,$4,$5,$6,$7,$8,$9) returning id, public_token`,
       [firstVendor, customerIds[customerIndex], dateFromNow(days), eventType, guests,
        `${eventType} for about ${guests} guests. Demo request.`,
-       status, quoteDollars === null ? null : quoteDollars * 100]
+       status, quoteDollars === null ? null : quoteDollars * 100, newToken()]
     );
     bookingCount++;
 

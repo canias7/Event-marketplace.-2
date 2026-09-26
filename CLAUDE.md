@@ -50,6 +50,15 @@ connection string or any secret into the chat** - chat keeps a transcript.
 its own Postgres in a `.localdb` folder. Same Postgres, same SQL, so anything
 that works locally works on Neon.
 
+**The Neon path is tested, not assumed.** `npm run test:server` installs a real
+Postgres on the machine and runs the entire suite against it through the `pg`
+driver, including over a certificate-verified TLS connection. Do not claim
+something works on Neon on the strength of the local tests alone - run that.
+
+Two things genuinely differ between the two, and the test suite branches on it:
+a real server accepts many connections at once, so `create-admin` works while
+the app is running; the local one does not.
+
 That local database is embedded in the process, so **only one program can open
 it at a time**. `src/db.js` enforces this with a `.in-use-by-pid` note file
 kept NEXT TO the folder (never inside it - Postgres refuses to open a data
@@ -74,6 +83,13 @@ Same rule for the publishable key (`pk_test_` only).
 
 A live key must be incapable of moving real money through this app. If a
 future request seems to require relaxing this, stop and ask first.
+
+### Careful if `pg` is ever upgraded past version 8
+`pg` currently treats `sslmode=require` as the strict `verify-full`, which is
+what we want. In `pg` v9 it becomes the weaker libpq meaning: encrypted but the
+certificate is **not** checked. `package.json` pins `pg` to `^8`, so this cannot
+change by accident. If that pin is ever raised, change the connection string to
+`sslmode=verify-full` in the same commit.
 
 ### Money
 Always stored as **whole cents in integer columns**, never decimals or floats.
@@ -183,7 +199,8 @@ src/handle.js        Wrapper that keeps a failing page from killing the app
 src/bookings.js      Booking request validation and creation
 src/money.js         Cents to dollars, and the platform fee split
 scripts/demo-data.js 24 fake vendors and a full CRM (npm run demo-data)
-test/e2e.sh          The 123 checks (npm test)
+test/e2e.sh          The checks. Runs against either database.
+test/with-real-postgres.sh  Sets up a real Postgres and runs them (npm run test:server)
 ```
 
 ---
@@ -204,6 +221,8 @@ test/e2e.sh          The 123 checks (npm test)
 - [x] Vendor CRM: pipeline with filters, lead pages, quoting, notes, stage moves
 - [x] Fee split shown to the vendor before they quote
 - [x] 123 end-to-end tests (`npm test`)
+- [x] Whole suite also passes against a real Postgres server over verified TLS
+      (`npm run test:server`)
 - [ ] Payments
 - [ ] Deploy to app.eventvendora.com
 

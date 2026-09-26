@@ -147,7 +147,8 @@ stored as `250000`. Decimals quietly lose pennies.
 | Set | Your Neon database. |
 
 It is the same Postgres either way, so anything that works locally works on
-Neon. Switching is one line in `.env`.
+Neon. Switching is one line in `.env`, and `npm run test:server` proves the
+whole app on a real server before you rely on it.
 
 **One catch with the local option:** it is built into the app rather than being
 a separate server, so only one program can open it at a time. If the app is
@@ -195,9 +196,17 @@ not a warning you can click past - the app simply will not run.
 ## Checking things work
 
 ```bash
-npm test          # clicks through every page and checks what comes back
-npm run db:check  # checks the SQL files are valid, without needing Neon
+npm test             # clicks through every page, on the local database
+npm run test:server  # the same tests, against a REAL Postgres server
+npm run db:check     # checks the SQL files are valid
 ```
+
+**Why there are two.** Neon is a real Postgres server on the other end of a
+network connection, reached with a different driver than the local database
+uses. Testing only locally would leave that whole path unproven. `test:server`
+sets up a throwaway Postgres on this machine and runs every test against it,
+including over an encrypted, certificate-checked connection - the same shape as
+Neon. Both are green.
 
 `npm test` starts the app on a spare port with a throwaway database, runs 123
 checks, then tidies up. It covers signups, logins, wrong passwords, locked-out
@@ -236,7 +245,8 @@ scripts/
   create-admin.js    Creates your admin account
   demo-data.js       Fills the app with fake vendors and bookings
 test/
-  e2e.sh             The 123 checks
+  e2e.sh             The checks. Runs against either database.
+  with-real-postgres.sh  Sets up a real Postgres and runs them
 ```
 
 ---
@@ -253,6 +263,6 @@ test/
 - [x] Booking requests with validation
 - [x] Demo data
 - [x] Vendor CRM: pipeline, lead pages, quoting, notes, stage moves
-- [x] 123 end-to-end tests
+- [x] 123 end-to-end tests, also passing against a real Postgres server
 - [ ] Payments
 - [ ] Deploy to app.eventvendora.com

@@ -16,6 +16,18 @@ BASE="http://localhost:$PORT"
 WORK="$(mktemp -d)"
 PASS=0; FAIL=0
 
+# Two ways to run these tests:
+#   npm test                          -> the built-in local database
+#   TEST_DATABASE_URL=... npm test    -> a real Postgres server, e.g. Neon
+# The app is identical either way. A few things genuinely differ, and the
+# tests below say so where they do.
+DB_URL="${TEST_DATABASE_URL:-}"
+if [ -n "$DB_URL" ]; then
+  WHERE="a real Postgres server ($(echo "$DB_URL" | sed -E 's|.*@([^/?]+).*|\1|'))"
+else
+  WHERE="the built-in local database"
+fi
+
 cleanup() {
   [ -n "${SERVER_PID:-}" ] && kill "$SERVER_PID" 2>/dev/null
   [ -n "${WORK:-}" ] && [ -d "$WORK" ] && rm -rf "${WORK:?}"
@@ -35,13 +47,13 @@ body()  { curl -s "$@"; }
 errmsg(){ curl -s "$@" | grep -o 'class="error">[^<]*' | sed 's/class="error">//'; }
 
 # The app always runs with the throwaway database and no Stripe keys.
-run_app() { PORT=$PORT LOCAL_DB_DIR="$WORK/db" DATABASE_URL= STRIPE_SECRET_KEY= STRIPE_PUBLISHABLE_KEY= "$@"; }
+run_app() { PORT=$PORT LOCAL_DB_DIR="$WORK/db" DATABASE_URL="$DB_URL" STRIPE_SECRET_KEY= STRIPE_PUBLISHABLE_KEY= "$@"; }
 
 # Started as a plain command with the settings in front, NOT through a
 # shell function - otherwise $! is the wrapper's id and we would later
 # "stop" the wrapper while the app kept running.
 start_server() {
-  PORT=$PORT LOCAL_DB_DIR="$WORK/db" DATABASE_URL= STRIPE_SECRET_KEY= STRIPE_PUBLISHABLE_KEY= \
+  PORT=$PORT LOCAL_DB_DIR="$WORK/db" DATABASE_URL="$DB_URL" STRIPE_SECRET_KEY= STRIPE_PUBLISHABLE_KEY= \
     node src/server.js >> "$WORK/server.log" 2>&1 &
   SERVER_PID=$!
   for _ in $(seq 1 40); do
@@ -72,7 +84,15 @@ if curl -s -o /dev/null -m 2 "$BASE/"; then
   exit 1
 fi
 
-echo "Starting the app on port $PORT with a throwaway database..."
+# A real server keeps whatever was there last time, so wipe it first.
+# The local database is a fresh folder each run and needs no wiping.
+if [ -n "$DB_URL" ]; then
+  echo "Emptying the test database first..."
+  psql "$DB_URL" -v ON_ERROR_STOP=1 -q -f db/reset.sql || { echo "could not reach $DB_URL"; exit 1; }
+fi
+
+echo "Testing against $WHERE"
+echo "Starting the app on port $PORT..."
 start_server
 echo
 
@@ -138,20 +158,28 @@ echo
 echo "7. ADMIN"
 check "login page says how to make an admin" "$(body $BASE/admin/login | grep -c 'No admin account exists yet')" "1"
 
-# The local database can only be opened by one program at a time, so this
-# must be refused while the app is running - quietly losing the new admin
-# would be much worse than an error.
-run_app node scripts/create-admin.js owner@eventvendora.com adminpass123 > "$WORK/blocked.log" 2>&1
-check "create-admin refuses while the app is running" "$(grep -c 'CANNOT OPEN THE LOCAL DATABASE' $WORK/blocked.log)" "1"
-check "  ...and says how to fix it"                   "$(grep -c 'press Ctrl+C' $WORK/blocked.log)" "1"
-check "  ...and no admin was created"                 "$(body $BASE/admin/login | grep -c 'No admin account exists yet')" "1"
+if [ -z "$DB_URL" ]; then
+  # The local database is built into the program, so only one thing can open
+  # it. This MUST be refused - quietly losing the new admin would be far
+  # worse than an error message.
+  run_app node scripts/create-admin.js owner@eventvendora.com adminpass123 > "$WORK/blocked.log" 2>&1
+  check "create-admin refuses while the app is running" "$(grep -c 'CANNOT OPEN THE LOCAL DATABASE' $WORK/blocked.log)" "1"
+  check "  ...and says how to fix it"                   "$(grep -c 'press Ctrl+C' $WORK/blocked.log)" "1"
+  check "  ...and no admin was created"                 "$(body $BASE/admin/login | grep -c 'No admin account exists yet')" "1"
 
-echo "   (stopping the app, creating the admin, starting it again)"
-stop_server
-run_app node scripts/create-admin.js owner@eventvendora.com adminpass123 > "$WORK/admin.log" 2>&1
-check "create-admin works once the app is stopped" "$(grep -c 'Admin account created' $WORK/admin.log)" "1"
-check "the lock note was tidied up"                "$([ -e "$WORK/db.in-use-by-pid" ] && echo present || echo gone)" "gone"
-start_server
+  echo "   (stopping the app, creating the admin, starting it again)"
+  stop_server
+  run_app node scripts/create-admin.js owner@eventvendora.com adminpass123 > "$WORK/admin.log" 2>&1
+  check "create-admin works once the app is stopped" "$(grep -c 'Admin account created' $WORK/admin.log)" "1"
+  check "the lock note was tidied up"                "$([ -e "$WORK/db.in-use-by-pid" ] && echo present || echo gone)" "gone"
+  start_server
+else
+  # A real server takes many connections at once, so there is nothing to
+  # stop and nothing to wait for. This is one of the reasons to use Neon.
+  run_app node scripts/create-admin.js owner@eventvendora.com adminpass123 > "$WORK/admin.log" 2>&1
+  check "create-admin works WHILE the app is running" "$(grep -c 'Admin account created' $WORK/admin.log)" "1"
+  check "  ...no need to stop anything"               "$(code $BASE/)" "200"
+fi
 
 check "admin can log in"             "$(code -c $WORK/a.jar -X POST $BASE/admin/login -d 'email=owner@eventvendora.com' -d 'password=adminpass123')" "302"
 check "admin dashboard opens"        "$(code -b $WORK/a.jar $BASE/admin)" "200"
@@ -305,5 +333,6 @@ check "the app is still answering"  "$(code $BASE/)" "200"
 echo
 echo "================================"
 echo " PASSED: $PASS    FAILED: $FAIL"
+echo " against: $WHERE"
 echo "================================"
 [ "$FAIL" -eq 0 ] || exit 1

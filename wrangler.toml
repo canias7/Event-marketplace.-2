@@ -1,0 +1,22 @@
+name = "eventvendora-marketplace"
+main = "src/index.ts"
+compatibility_date = "2026-09-01"
+workers_dev = true
+
+# Served at https://marketplace.eventvendora.com. Requires eventvendora.com to be a zone
+# in the same Cloudflare account; wrangler creates the DNS record and certificate.
+routes = [
+  { pattern = "marketplace.eventvendora.com", custom_domain = true }
+]
+
+[vars]
+PLATFORM_FEE_BPS = "1000" # 10% platform commission
+
+[observability]
+enabled = true
+
+# Secrets (set with `wrangler secret put <NAME>`, never commit them):
+#   DATABASE_URL                   Neon connection string (pooled)
+#   STRIPE_SECRET_KEY              Stripe TEST secret key, sk_test_...
+#   STRIPE_WEBHOOK_SECRET          whsec_... for the platform webhook endpoint
+#   STRIPE_CONNECT_WEBHOOK_SECRET  whsec_... for the Connect webhook endpoint (optional)
